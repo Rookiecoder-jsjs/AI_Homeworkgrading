@@ -1,59 +1,63 @@
-# 📝 AI 作业批改系统
+# AI_Homeworkgrading
 
-> **MVP v0.1.0** · 让 AI 替老师熬夜批作业，学生交完就能看到反馈 🚀
+> **v0.2.1** · AI 驱动的 K12 智能作业批改平台
 
-告别老师批到凌晨的苦日子！基于 **qwen3.6-flash** 的智能批改平台，从布置到订正一条龙搞定。客观题秒出分，主观题 AI 点评，苏格拉底式引导让学生自己"悟"出来，而不是抄答案。
+基于 **qwen3.6-flash** 的智能批改系统，从布置到订正一条龙搞定。客观题秒出分，主观题 AI 点评，苏格拉底式引导让学生自己"悟"出来。
 
 ---
 
 ## ✨ 亮点速览
 
-### 👩‍🏫 教师端 — 原来批作业可以这么轻松
+### 👩‍🏫 教师端
 
-| 功能 | 一句话 |
-|------|--------|
-| 📋 **作业管理** | 5 种题型随意组合，选择/判断/填空/简答/作文 |
-| 📸 **拍照出题** | 对着试卷咔嚓一下，AI 自动识别题目、答案、题型 |
-| ⚡ **批量批改** | 全班作业一键批完，咖啡还没凉 |
-| 🎯 **智能复核** | 高置信度自动折叠 ✅ 通过，只看有问题的几道题 |
-| 📊 **看板统计** | 5 张交互卡片，戳一下直达详情 |
+| 功能 | 说明 |
+|------|------|
+| 📋 作业管理 | 5 种题型随意组合，支持编辑、拍照出题 |
+| ⚡ 批量批改 | 一键批完全班，异步并行，5-10x 提速 |
+| 🎯 智能复核 | 高置信度自动折叠，一键确认，只看有问题的 |
+| 📊 看板统计 | 数字递增动画 + 班级分析 + 趋势图 |
+| 🎨 批改风格 | 分析评分偏差，AI 自适应你的标准 |
+| 📥 成绩导出 | CSV + PDF 家长报告一键下载 |
 
-### 🧑‍🎓 学生端 — 交完就知道哪里错了
+### 🧑‍🎓 学生端
 
-| 功能 | 一句话 |
-|------|--------|
-| ✍️ **逐题作答** | 打字或拍照，每道题独立提交 |
-| 🖼️ **原图展示** | 数学几何题、证明题保留原始图片 |
-| 💡 **引导反馈** | 苏格拉底式三步走：先自己想 → 给提示 → 完整解析 |
-| 🔄 **错题订正** | 只看错题，改完自动重新批 |
-| 📡 **实时状态** | 等待批改 → AI已批 → 老师已复核，心里有数 |
+| 功能 | 说明 |
+|------|------|
+| ✍️ 逐题作答 | 打字或拍照，每道题独立提交 |
+| 💡 引导反馈 | 苏格拉底三步法：先想 → 提示 → 解析 |
+| 📖 错题本 | 跨作业聚合，按科目筛选，一键生成变式题 |
+| 🧠 知识诊断 | 知识点提取 + 依赖图 + 根因追溯 |
+| 🔢 数学渲染 | KaTeX 实时渲染 LaTeX 公式 |
+| 📡 实时状态 | 15s 自动刷新 + 新批改脉冲提示 |
 
 ---
 
-## 🤖 AI 怎么批？
+## 🤖 AI 批改流程
 
 ```
-📄 学生答案 ─┬─ 选择题/判断题 ── 规则秒配（99% 准确率，不花一分钱 API）
-             ├─ 填空题 ── 先精确匹配 → 配不上再请 AI 出马
-             └─ 简答/作文 ── AI 深度理解，给出评分 + 🔥 引导式评语
+学生答案 ─┬─ 选择/判断 → 规则秒配（99% 准确率，零 API 成本）
+          ├─ 填空 → 精确匹配优先 → AI 兜底
+          └─ 简答/作文 → AI 深度理解 + 引导式评语
 
-📊 每道题标记置信度：🟢 >90% 自动过  🟡 70-90% 建议看  🔴 <70% 必须审
+每道题：🟢 >90% 自动过  🟡 70-90% 建议看  🔴 <70% 必须审
+批改后：自动提取知识点 → 依赖图谱 → 根因诊断 → AI 自适应教师风格
 ```
 
 ---
 
 ## 🛠️ 技术栈
 
-| 层 | 方案 | 为什么选它 |
-|----|------|-----------|
-| 🖥️ 前端 | React 18 + TypeScript + Vite | 类型安全，改代码秒级热更新 |
-| 🎨 样式 | 内联 CSS-in-JS | 零依赖，开箱即用 |
-| ✨ 动效 | Framer Motion | 轻量声明式，页面丝滑入场 |
-| 🚦 路由 | react-router-dom v7 | 标准方案，12 条路由 |
-| ⚙️ 后端 | FastAPI (Python) | 自动生成接口文档，写 API 像写注释 |
-| 💾 数据库 | SQLite (WAL) | 单文件零配置，MVP 绝配 |
-| 🧠 AI 模型 | qwen3.6-flash | 快、便宜、中文好、能看图 |
-| 🔌 AI SDK | OpenAI Python SDK | 兼容 DashScope，切模型不换代码 |
+| 层 | 方案 | 说明 |
+|----|------|------|
+| 前端 | React 18 + TypeScript + Vite | 类型安全，HMR 秒级热更新 |
+| 样式 | 内联 CSS-in-JS + Glass Morphism | 零 UI 框架，玻璃态卡片 |
+| 动效 | Framer Motion + TiltCard + CountUp | 3D 鼠标跟随 + 数字递增 |
+| 数学 | KaTeX | LaTeX 公式实时渲染 |
+| 路由 | react-router-dom v7 | 15 条路由 |
+| 后端 | FastAPI + async/await | 自动 OpenAPI 文档，异步并行 |
+| 数据库 | SQLite (WAL) | 零配置，8 张表 |
+| AI | qwen3.6-flash + AsyncOpenAI | 多模态，低成本，中文强 |
+| PDF | fpdf2 | 纯 Python ~200KB |
 
 ---
 
@@ -62,84 +66,85 @@
 ```
 AI_Homeworkgrading/
 ├── 📖 README.md
-├── 📋 PRD.md                   # 产品需求文档
-├── 🏛️ ARCHITECTURE.md          # 架构设计文档
-├── 📄 .env.example             # 环境变量模板
-├── 🔧 backend/
-│   ├── main.py                 # FastAPI 主入口
-│   ├── config.py               # 配置中心
-│   ├── database.py             # SQLite + 自动迁移
-│   ├── models.py               # Pydantic 模型
-│   ├── routers/                # 4 个路由模块
-│   ├── services/               # OCR / 批改 / 反馈 服务
-│   ├── prompts/                # 3 套 Prompt 模板
-│   ├── uploads/                # 图片存储
-│   └── data/                   # 数据库文件（Git 忽略）
-└── 🎨 frontend/src/
-    ├── api/                    # HTTP 封装
-    ├── components/             # 5 个通用组件
-    ├── motion/                 # 动画包装组件
-    ├── pages/
-    │   ├── teacher/            # 教师端 6 页
-    │   └── student/            # 学生端 5 页
-    └── types/                  # TypeScript 类型
+├── 📋 PRD.md
+├── 🏛️ ARCHITECTURE.md
+├── backend/
+│   ├── main.py                 # FastAPI 入口（7 个路由模块）
+│   ├── config.py / database.py # 配置 + SQLite 8 表 + 自动迁移
+│   ├── models.py               # 30+ Pydantic 模型
+│   ├── routers/                # 7 个路由（assignments/submissions/grading/dashboard/error_book/pdf_export）
+│   ├── services/               # 10 个服务（ai_client/ocr/grader/feedback/knowledge_graph/teacher_style/error_book/question_generator/class_analytics/pdf_export）
+│   └── prompts/                # 5 套 Prompt
+└── frontend/src/
+    ├── api/client.ts           # 30+ API 方法
+    ├── components/             # 13 个组件
+    │   ├── CleanContent.tsx     # 内容清洗 + JSON 检测 + KaTeX 渲染
+    │   ├── MathRenderer.tsx     # LaTeX 数学公式渲染（KaTeX）
+    │   ├── ConfidenceBadge / SocraticFeedback / GradingResult
+    │   ├── KnowledgeGraph / MasteryBar / StyleIndicator
+    │   └── SimilarQuestionCard / ImageUploader / MarkdownRenderer
+    ├── motion/index.tsx        # 8 个动画组件（含 TiltCard）
+    ├── theme.ts                # 设计 Token + 玻璃态色值
+    └── pages/                  # 15 个页面（teacher 8 + student 6 + home）
 ```
 
 ---
 
-## 🚀 一分钟跑起来
-
-### ① 装依赖
+## 🚀 快速开始
 
 ```bash
-pip install -r backend/requirements.txt   # Python 3.10+
-cd frontend && npm install                # Node.js 18+
-```
+# 1. 安装依赖
+pip install -r backend/requirements.txt
+cd frontend && npm install
 
-### ② 配 API Key
-
-```bash
+# 2. 配置 API Key
 cp .env.example .env
-# 编辑 .env，把 sk-your-key-here 换成真的 DashScope API Key
+# 编辑 .env → DASHSCOPE_API_KEY=你的key
+
+# 3. 启动
+cd frontend && npm run dev
+# 浏览器打开 http://localhost:5173
 ```
 
-### ③ 启动！
+---
 
-```bash
-cd frontend
-npm run dev
-```
+## 🆕 v0.2.1 更新
 
-浏览器打开 `http://localhost:5173`，前后端一起跑 🎉
+### 视觉升级 (Level 2)
+- **首页重设计**：玻璃态卡片 + 3D TiltCard + 动态渐变 blob 背景 + 统一 hero 区块
+- **看板升级**：CountUp 数字递增动画、玻璃态卡片、TiltCard 鼠标跟随
+- **设计系统**：新增 Glass Morphism 色值、弹性过渡曲线、超圆角
 
-### ④ 走一遍流程
+### 稳定性
+- **extract_json 重写**：正则 → 括号计数状态机，14/14 边界测试通过，自动修复尾部逗号、回退重试
+- **KaTeX 数学渲染**：自动识别 `$...$` / `$$...$$` 公式，无需手动处理 LaTeX
+- **CleanContent**：自动检测并清洗 raw JSON 内容，修复历史脏数据
 
-1. 🏠 首页点 **教师入口**
-2. ➕ 创建一份作业（试试拍照出题！）→ 发布
-3. 🏠 切到 **学生入口** → 输入名字 → 提交答案
-4. 🔙 回到教师端 → **批量 AI 批改** → 一键确认高置信度
-5. 🧑‍🎓 学生端看结果 → 错题订正 → 完事儿！
+### 组件新增
+- `MathRenderer` — KaTeX 数学公式渲染
+- `CleanContent` — 内容清洗 + JSON 提取 + 数学渲染一体化
+- `TiltCard` — 3D 鼠标跟随卡片（motion 系统）
 
 ---
 
 ## 🎯 设计哲学
 
-- **极简至上** — 纯内联 CSS，不引入任何 UI 框架。能用 `<div style>` 解决的绝不动 CSS 文件
-- **AI 辅助人，不替代人** — 高置信度自动过，低置信度交给老师把最后一道关
-- **引导学生，不喂答案** — 苏格拉底式三步反馈，让学生自己想明白
-- **本地优先** — SQLite + 本地文件存储，除了 AI API，没有任何外部依赖
+- **极简至上** — 纯内联 CSS，零 UI 框架
+- **AI 辅助人** — 高置信度自动过，低置信度教师把关
+- **知识驱动** — 错题→知识点→根因，精准诊断
+- **本地优先** — SQLite + 本地存储，仅 AI API 需联网
 
 ---
 
-## 🔜 下个版本想做
+## 🔜 下个版本
 
-- [ ] 🔐 登录注册（别再输名字了）
-- [ ] 📚 学生错题本（散落的错题聚起来）
-- [ ] 📈 薄弱知识点图谱
-- [ ] 📤 作业批量导入导出
-- [ ] 💬 教师自定义评语模板
-- [ ] 🔊 语音批改（说比打字快）
+- [ ] **数学题分步推理动画**（Remotion + KaTeX）
+  - 代数推导题：LLM 拆解步骤 → Remotion 逐帧渲染公式 + TTS 语音讲解 → MP4
+  - 几何证明题：LLM 生成推理步骤 + 几何约束引擎自动作图 + SVG 动画
+  - 复用 `video-podcast-maker` skill 的 调研→脚本→TTS→Remotion→MP4 管线
+- [ ] 登录注册系统
+- [ ] Google Classroom / 钉钉集成
+- [ ] 移动端适配
+- [ ] 语音批改
 
----
-
-<p align="center">Made with ☕ and late nights · Powered by <strong>qwen3.6-flash</strong></p>
+<p align="center">Made with ☕ · Powered by <strong>qwen3.6-flash</strong></p>

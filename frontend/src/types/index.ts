@@ -61,4 +61,29 @@ export interface StudentDashboard {
   completed_count: number;
   average_score: number;
   weak_points: string[];
+  weak_point_details: { knowledge_point_name: string; mastery_score: number }[];
+}
+
+export interface TeacherStyleReport {
+  teacher_name: string;
+  profiles: { question_type: string; avg_bias: number; total_overrides: number; strictness_level: string }[];
+  total_overrides: number;
+  overall_bias: number;
+  classification: string;
+  recommendation: string;
+}
+
+export interface KnowledgeGraphRoot {
+  id: number;
+  name: string;
+  parent_id: number | null;
+  description: string;
+  children: KnowledgeGraphRoot[];
+}
+
+export interface StudentDiagnosis {
+  student_name: string;
+  wrong_question_count: number;
+  root_causes: { knowledge_point_id: number; name: string; affected_count: number }[];
+  mastery: Record<string, number>;
 }

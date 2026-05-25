@@ -70,6 +70,23 @@ export default function AssignmentDetailPage() {
             {batchGrading ? '🤖 批改中...' : `🤖 批量 AI 批改（${pendingCount} 份）`}
           </button>
         )}
+        <a
+          href={api.exportGradesUrl(+id!)}
+          style={{
+            padding: '10px 24px',
+            borderRadius: 12,
+            border: '1px solid #047857',
+            background: '#ecfdf5',
+            color: '#047857',
+            fontWeight: 600,
+            fontSize: 14,
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+            textDecoration: 'none',
+          }}
+        >
+          📥 导出成绩
+        </a>
       </div>
 
       {assignment.description && <p style={{ color: '#475569', marginTop: 12 }}>{assignment.description}</p>}

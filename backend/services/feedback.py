@@ -5,7 +5,7 @@ from services.ai_client import chat
 from prompts.feedback import FEEDBACK_SYSTEM_PROMPT, build_feedback_prompt
 
 
-def generate_socratic_feedback(
+async def generate_socratic_feedback(
     question_content: str,
     student_answer: str,
     reference_answer: str,
@@ -19,5 +19,5 @@ def generate_socratic_feedback(
         {"role": "user", "content": user_prompt},
     ]
 
-    result = chat(messages, temperature=0.5)
+    result = await chat(messages, temperature=0.5)
     return result.strip()

@@ -50,10 +50,72 @@ CREATE TABLE IF NOT EXISTS answers (
 );
 
 
+CREATE TABLE IF NOT EXISTS knowledge_points (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    subject TEXT DEFAULT '',
+    parent_id INTEGER REFERENCES knowledge_points(id) ON DELETE SET NULL,
+    description TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(name, subject)
+);
+
+CREATE TABLE IF NOT EXISTS question_knowledge_points (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+    knowledge_point_id INTEGER NOT NULL REFERENCES knowledge_points(id) ON DELETE CASCADE,
+    importance REAL DEFAULT 0.5,
+    UNIQUE(question_id, knowledge_point_id)
+);
+
+CREATE TABLE IF NOT EXISTS student_mastery (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_name TEXT NOT NULL,
+    knowledge_point_id INTEGER NOT NULL REFERENCES knowledge_points(id) ON DELETE CASCADE,
+    mastery_score REAL DEFAULT 0.0,
+    total_attempts INTEGER DEFAULT 0,
+    correct_attempts INTEGER DEFAULT 0,
+    last_updated TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(student_name, knowledge_point_id)
+);
+
+CREATE TABLE IF NOT EXISTS teacher_style_profile (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    teacher_name TEXT NOT NULL,
+    question_type TEXT DEFAULT '',
+    avg_bias REAL DEFAULT 0.0,
+    bias_stddev REAL DEFAULT 0.0,
+    total_overrides INTEGER DEFAULT 0,
+    strictness_level TEXT DEFAULT 'normal',
+    last_updated TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(teacher_name, question_type)
+);
+
 CREATE INDEX IF NOT EXISTS idx_questions_assignment ON questions(assignment_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_assignment ON submissions(assignment_id);
 CREATE INDEX IF NOT EXISTS idx_answers_submission ON answers(submission_id);
 CREATE INDEX IF NOT EXISTS idx_answers_question ON answers(question_id);
+CREATE INDEX IF NOT EXISTS idx_kp_parent ON knowledge_points(parent_id);
+CREATE INDEX IF NOT EXISTS idx_kp_subject ON knowledge_points(subject);
+CREATE INDEX IF NOT EXISTS idx_qkp_question ON question_knowledge_points(question_id);
+CREATE TABLE IF NOT EXISTS error_book (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_name TEXT NOT NULL,
+    question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+    answer_id INTEGER NOT NULL REFERENCES answers(id) ON DELETE CASCADE,
+    wrong_answer TEXT DEFAULT '',
+    knowledge_points_json TEXT DEFAULT '[]',
+    subject TEXT DEFAULT '',
+    class_name TEXT DEFAULT '',
+    added_at TEXT DEFAULT (datetime('now','localtime')),
+    reviewed_count INTEGER DEFAULT 0,
+    last_reviewed TEXT DEFAULT '',
+    status TEXT DEFAULT 'active',
+    UNIQUE(student_name, answer_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sm_student ON student_mastery(student_name);
+CREATE INDEX IF NOT EXISTS idx_eb_student ON error_book(student_name);
 """
 
 
@@ -68,14 +130,25 @@ def get_db() -> sqlite3.Connection:
 def init_db() -> None:
     conn = get_db()
     conn.executescript(SCHEMA)
-    # Migrations for older schema upgrades
-    for sql in [
-        "ALTER TABLE answers ADD COLUMN image_url TEXT DEFAULT ''",
-        "ALTER TABLE questions ADD COLUMN image_url TEXT DEFAULT ''",
-    ]:
-        try:
-            conn.execute(sql)
-        except sqlite3.OperationalError:
-            pass
+    _migrate(conn)
     conn.commit()
     conn.close()
+
+
+def _migrate(conn) -> None:
+    """Apply missing-column migrations safely by checking schema first."""
+    migrations = {
+        "answers": [
+            ("image_url", "TEXT DEFAULT ''"),
+            ("ai_score", "INTEGER DEFAULT 0"),
+        ],
+        "questions": [
+            ("image_url", "TEXT DEFAULT ''"),
+            ("knowledge_points_json", "TEXT DEFAULT ''"),
+        ],
+    }
+    for table, columns in migrations.items():
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        for col_name, col_def in columns:
+            if col_name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")

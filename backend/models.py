@@ -107,3 +107,50 @@ class StudentDashboard(BaseModel):
     completed_count: int
     average_score: float
     weak_points: list[str] = []
+    weak_point_details: list[dict] = []
+
+
+# ── Knowledge Graph ───────────────────────────────────────
+
+class KnowledgePointOut(BaseModel):
+    id: int
+    name: str
+    subject: str = ""
+    parent_id: Optional[int] = None
+    description: str = ""
+
+
+class KnowledgeGraphNode(BaseModel):
+    id: int
+    name: str
+    children: list["KnowledgeGraphNode"] = []
+    mastery_score: Optional[float] = None
+
+
+class WeakPointDiagnosis(BaseModel):
+    knowledge_point_id: int
+    knowledge_point_name: str
+    root_cause_name: str = ""
+    mastery_score: float = 0.0
+    affected_count: int = 0
+
+
+# ── Teacher Style ─────────────────────────────────────────
+
+class TeacherStyleProfile(BaseModel):
+    teacher_name: str
+    question_type: str
+    avg_bias: float
+    bias_stddev: float
+    total_overrides: int
+    strictness_level: str
+    last_updated: str = ""
+
+
+class TeacherStyleReport(BaseModel):
+    teacher_name: str
+    profiles: list[dict] = []
+    total_overrides: int = 0
+    overall_bias: float = 0.0
+    classification: str = "balanced"
+    recommendation: str = ""

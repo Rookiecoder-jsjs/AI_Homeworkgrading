@@ -1,3 +1,4 @@
+import json
 import os
 import uuid
 from typing import Optional, List
@@ -7,8 +8,11 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from config import UPLOAD_DIR
 from database import get_db
 from models import AnswerOut, QuestionOut, SubmissionDetail, SubmissionOut
+from utils import save_upload
 
 router = APIRouter(prefix="/api/submissions", tags=["submissions"])
+
+PENDING_OCR_PLACEHOLDER = "[待 OCR 识别]"
 
 
 def _build_submission_detail(sub_row, conn) -> SubmissionDetail:
@@ -45,8 +49,6 @@ async def submit_assignment(
     question_image_ids: str = Form(""),
     answers_json: str = Form("[]"),
 ):
-    import json
-
     conn = get_db()
     asg = conn.execute("SELECT id FROM assignments WHERE id = ?", [assignment_id]).fetchone()
     if not asg:
@@ -56,12 +58,7 @@ async def submit_assignment(
     # Save global image if provided (backwards compat)
     image_url = ""
     if image and image.filename:
-        ext = os.path.splitext(image.filename)[1] or ".png"
-        filename = f"{uuid.uuid4().hex}{ext}"
-        filepath = os.path.join(UPLOAD_DIR, filename)
-        with open(filepath, "wb") as f:
-            f.write(await image.read())
-        image_url = f"/uploads/{filename}"
+        image_url = await save_upload(image, UPLOAD_DIR)
 
     cur = conn.execute(
         "INSERT INTO submissions (assignment_id, student_name, image_url) VALUES (?, ?, ?)",
@@ -76,22 +73,15 @@ async def submit_assignment(
         answer_items = []
 
     # Parse per-question image ID mapping
-    q_image_ids: list[str] = []
-    if question_image_ids:
-        q_image_ids = question_image_ids.split(",")
+    q_image_ids = question_image_ids.split(",") if question_image_ids else []
 
     # Save per-question images → map question_id → image_url
     q_image_map: dict[str, str] = {}
     for i, qimg in enumerate(question_images):
         if qimg and qimg.filename:
-            ext = os.path.splitext(qimg.filename)[1] or ".png"
-            filename = f"{uuid.uuid4().hex}{ext}"
-            filepath = os.path.join(UPLOAD_DIR, filename)
-            with open(filepath, "wb") as f:
-                f.write(await qimg.read())
             qid = q_image_ids[i] if i < len(q_image_ids) else ""
             if qid:
-                q_image_map[qid] = f"/uploads/{filename}"
+                q_image_map[qid] = await save_upload(qimg, UPLOAD_DIR)
 
     # If no text answers but global image was uploaded, create placeholder answers for each question
     if not answer_items and image_url:
@@ -101,7 +91,7 @@ async def submit_assignment(
         for q in questions:
             conn.execute(
                 "INSERT INTO answers (submission_id, question_id, student_answer) VALUES (?, ?, ?)",
-                [submission_id, q["id"], "[待 OCR 识别]"],
+                [submission_id, q["id"], PENDING_OCR_PLACEHOLDER],
             )
     else:
         for item in answer_items:
@@ -129,30 +119,38 @@ def list_submissions(assignment_id: Optional[int] = None):
         ).fetchall()
     else:
         rows = conn.execute("SELECT * FROM submissions ORDER BY submitted_at DESC").fetchall()
+
+    if not rows:
+        conn.close()
+        return []
+
+    # Single query to get all stats for all submissions at once
+    sub_ids = [r["id"] for r in rows]
+    placeholders = ",".join("?" for _ in sub_ids)
+    stats = conn.execute(
+        f"""SELECT
+               submission_id,
+               SUM(CASE WHEN ai_confidence < 0.7 AND teacher_override = 0 THEN 1 ELSE 0 END) as low_conf_count,
+               SUM(CASE WHEN ai_confidence > 0.9 AND teacher_override = 0 THEN 1 ELSE 0 END) as high_conf_count,
+               SUM(CASE WHEN teacher_override = 1 THEN 1 ELSE 0 END) as reviewed_count,
+               COUNT(*) as total_answers
+             FROM answers
+             WHERE submission_id IN ({placeholders})
+             GROUP BY submission_id""",
+        sub_ids,
+    ).fetchall()
+    stats_map = {s["submission_id"]: dict(s) for s in stats}
+
     result = []
     for r in rows:
         d = dict(r)
-        # Add review stats for teacher
-        low = conn.execute(
-            "SELECT COUNT(*) as cnt FROM answers WHERE submission_id = ? AND ai_confidence < 0.7 AND teacher_override = 0",
-            [r["id"]],
-        ).fetchone()["cnt"]
-        high = conn.execute(
-            "SELECT COUNT(*) as cnt FROM answers WHERE submission_id = ? AND ai_confidence > 0.9 AND teacher_override = 0",
-            [r["id"]],
-        ).fetchone()["cnt"]
-        reviewed = conn.execute(
-            "SELECT COUNT(*) as cnt FROM answers WHERE submission_id = ? AND teacher_override = 1",
-            [r["id"]],
-        ).fetchone()["cnt"]
-        total_ans = conn.execute(
-            "SELECT COUNT(*) as cnt FROM answers WHERE submission_id = ?", [r["id"]]
-        ).fetchone()["cnt"]
-        d["low_conf_count"] = low
-        d["high_conf_count"] = high
-        d["reviewed_count"] = reviewed
-        d["total_answers"] = total_ans
+        s = stats_map.get(r["id"], {})
+        d["low_conf_count"] = s.get("low_conf_count", 0)
+        d["high_conf_count"] = s.get("high_conf_count", 0)
+        d["reviewed_count"] = s.get("reviewed_count", 0)
+        d["total_answers"] = s.get("total_answers", 0)
         result.append(d)
+
     conn.close()
     return result
 

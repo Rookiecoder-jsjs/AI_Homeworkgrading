@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { api } from '../../api/client';
 
 interface ReviewItem {
   id: number;
@@ -16,8 +17,7 @@ export default function ReviewQueuePage() {
   const [items, setItems] = useState<ReviewItem[]>([]);
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/dashboard/review-queue')
-      .then((r) => r.json())
+    api.getReviewQueue()
       .then(setItems)
       .catch(console.error);
   }, []);

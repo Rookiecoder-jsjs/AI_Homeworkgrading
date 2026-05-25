@@ -1,266 +1,167 @@
-# AI 作业批改系统 — 架构文档
+# AI_Homeworkgrading — 架构文档
 
-> **当前阶段：MVP v0.1.0**  
-> 前端采用纯内联 CSS-in-JS 极简设计，无 Tailwind/MUI 等 UI 框架依赖。动效使用 Framer Motion 轻量声明式动画。后端 FastAPI + SQLite 单文件数据库。整体设计遵循"功能完整、依赖最简"的 MVP 原则。
+> **当前版本：v0.2.1**
+> 前端纯内联 CSS-in-JS + Glass Morphism + Framer Motion + KaTeX。后端 FastAPI + SQLite + AsyncOpenAI 异步并行。
 
 ## 1. 项目结构
 
 ```
 AI_Homeworkgrading/
-├── .env                              # 环境变量（DashScope API Key）
-├── PRD.md                            # 产品需求文档
-├── ARCHITECTURE.md                   # 本文件
-├── frontend/
-│   └── src/
-│       ├── main.tsx                  # React 入口
-│       ├── App.tsx                   # 路由定义（12 条路由）
-│       ├── theme.ts                  # 设计 Token（颜色/圆角/阴影/动画关键帧）
-│       ├── index.css                 # 全局 CSS + @keyframes + 滚动条
-│       ├── types/index.ts            # TS 类型定义
-│       ├── api/client.ts             # HTTP API 封装
-│       ├── motion/index.tsx          # Framer Motion 动画组件（7 个）
-│       ├── components/               # 5 个可复用组件
-│       │   ├── ConfidenceBadge.tsx    # 置信度徽章（绿黄红三色+光晕）
-│       │   ├── SocraticFeedback.tsx   # 苏格拉底反馈（Lv0→Lv1→Lv2 三级展开）
-│       │   ├── GradingResult.tsx      # 单题批改结果卡片
-│       │   ├── ImageUploader.tsx      # 图片上传/预览
-│       │   └── MarkdownRenderer.tsx   # Markdown 渲染
-│       └── pages/
-│           ├── Home.tsx              # 首页（教师/学生角色卡片）
-│           ├── teacher/
-│           │   ├── Dashboard.tsx      # 看板（5 个可点击卡片，stagger 入场）
-│           │   ├── AssignmentList.tsx  # 作业列表
-│           │   ├── AssignmentCreate.tsx # 创建作业（动态题目编辑器）
-│           │   ├── AssignmentDetail.tsx # 作业详情 + 批量批改按钮
-│           │   ├── SubmissionReview.tsx # 逐题复核（stagger 卡片）
-│           │   └── ReviewQueue.tsx     # 待复核队列
-│           └── student/
-│               ├── Dashboard.tsx      # 学生看板（姓名输入 + 统计）
-│               ├── AssignmentList.tsx  # 我的作业（状态标签）
-│               ├── SubmitPage.tsx      # 逐题作答 + 逐题拍照
-│               ├── ResultPage.tsx      # 批改结果（分数环 + 等待状态）
-│               └── CorrectPage.tsx     # 错题订正
+├── README.md · PRD.md · ARCHITECTURE.md
+├── .env.example
+├── frontend/src/
+│   ├── main.tsx / App.tsx          # 入口 + 15 条路由
+│   ├── theme.ts                    # 设计 Token（含玻璃态色值）
+│   ├── constants.ts                # 题型标签映射
+│   ├── index.css                   # 全局 CSS + @keyframes
+│   ├── types/index.ts              # 12+ TS 接口
+│   ├── api/client.ts               # 30+ API 方法
+│   ├── motion/index.tsx            # 8 个动画组件（含 TiltCard）
+│   ├── components/                 # 13 个组件
+│   │   ├── CleanContent.tsx         # 🆕 内容清洗 + JSON 检测 + KaTeX
+│   │   ├── MathRenderer.tsx         # 🆕 LaTeX 公式 KaTeX 渲染
+│   │   ├── ConfidenceBadge.tsx      # 置信度三色徽章
+│   │   ├── SocraticFeedback.tsx     # 苏格拉底三级展开
+│   │   ├── GradingResult.tsx        # 单题批改卡片
+│   │   ├── ImageUploader.tsx        # 图片上传
+│   │   ├── MarkdownRenderer.tsx     # Markdown 渲染
+│   │   ├── KnowledgeGraph.tsx       # 知识树可视化
+│   │   ├── MasteryBar.tsx           # 掌握度进度条
+│   │   ├── StyleIndicator.tsx       # 教师偏差徽章
+│   │   ├── SimilarQuestionCard.tsx  # 变式题卡片
+│   │   ├── TiltCard (in motion)     # 3D 鼠标跟随
+│   │   └── CountUp (in pages)      # 数字递增动画
+│   └── pages/
+│       ├── Home.tsx                 # 玻璃态首页
+│       ├── teacher/ (8 pages)      # 看板/作业/复核/队列/风格/分析
+│       └── student/ (6 pages)      # 看板/作业/提交/结果/订正/错题本
 └── backend/
-    ├── requirements.txt              # Python 依赖
-    ├── config.py                     # 从 .env 加载配置
-    ├── database.py                   # SQLite schema + init + 自动迁移
-    ├── models.py                     # 15 个 Pydantic 模型
-    ├── main.py                       # FastAPI 入口
-    ├── routers/
-    │   ├── assignments.py            # 作业 CRUD（5 个端点）
-    │   ├── submissions.py            # 提交管理（3 个端点，逐题图片支持）
-    │   ├── grading.py                # 批改引擎（5 个端点，含批量批改）
-    │   └── dashboard.py              # 仪表盘（3 个端点，含待复核队列）
-    ├── services/
-    │   ├── ai_client.py              # OpenAI SDK 封装（连接 DashScope）
-    │   ├── ocr.py                    # OCR 服务（图片→文本）
-    │   ├── grader.py                 # 批改引擎（规则+AI 分流）
-    │   └── feedback.py              # 苏格拉底反馈生成
-    ├── prompts/
-    │   ├── ocr.py                    # OCR 提示词
-    │   ├── grading.py                # 批改提示词 + prompt 构建器
-    │   └── feedback.py              # 反馈提示词 + prompt 构建器
-    ├── uploads/                      # 本地图片存储
-    └── data/                         # SQLite 数据库
+    ├── main.py                      # FastAPI 入口（7 个路由）
+    ├── config.py / database.py      # 配置 + 8 表 + PRAGMA 自动迁移
+    ├── models.py                    # 30+ Pydantic 模型
+    ├── utils.py                     # extract_json（括号计数状态机）+ 文件上传校验
+    ├── routers/                     # 7 个路由模块（30+ 端点）
+    │   ├── assignments.py           # 作业 CRUD + CSV 导出 + 编辑
+    │   ├── submissions.py           # 提交管理（multipart + 逐题图片）
+    │   ├── grading.py               # 异步并行批改引擎
+    │   ├── dashboard.py             # 看板 + 知识图谱 + 班级分析 + 教师风格
+    │   ├── error_book.py            # 错题本（6 端点）
+    │   └── pdf_export.py            # 家长报告 PDF
+    ├── services/                    # 10 个服务
+    │   ├── ai_client.py             # AsyncOpenAI（文本+多模态）
+    │   ├── ocr.py / grader.py / feedback.py
+    │   ├── knowledge_graph.py       # 知识点提取 + 依赖图 + BFS 根因
+    │   ├── teacher_style.py         # Welford 偏差追踪 + 修正
+    │   ├── error_book.py / question_generator.py
+    │   ├── class_analytics.py       # 热力图 + 趋势 + 对比
+    │   └── pdf_export.py            # fpdf2 A4 报告
+    └── prompts/                     # 5 套 Prompt 模板
 ```
 
 ---
 
 ## 2. 端到端数据流
 
-### 主流程
-
 ```
-Frontend                              Backend
-───────                               ───────
-教师创建作业 ─────────────────► POST /api/assignments → INSERT assignments + questions
-学生逐题作答+拍照 ─────────────► POST /api/submissions → 保存图片 + INSERT answers
-教师触发批改 ─────────────────► POST /api/submissions/:id/grade
-                                   ├─ OCR（逐题图片）→ UPDATE answers
-                                   ├─ 规则引擎（客观题）→ 本地比对
-                                   └─ AI 批改（主观题）→ DashScope API
-                                   → UPDATE answers (is_correct/confidence/feedback/score)
-学生查看结果 ◄──────────────── GET /api/submissions/:id → GradingResult + SocraticFeedback
-学生订正错题 ─────────────────► POST /api/submissions/:id/correct → 重新批改
-教师复核纠偏 ─────────────────► PUT /api/answers/:id/override → teacher_override=1
-```
-
-### 批量批改流程
-
-```
-教师点击"批量 AI 批改(N 份)" → POST /api/assignments/:id/grade-all
-  → 遍历所有 status='submitted' 的提交
-  → 逐个调用 _grade_one() → OCR + 规则/AI 批改
-  → 返回 {total, graded}
+教师创建/编辑作业 ──► POST/PUT /api/assignments
+学生逐题作答+拍照 ──► POST /api/submissions (multipart + JSON)
+教师触发批改 ──► POST /api/submissions/:id/grade
+  ├─ OCR（异步并行）→ UPDATE answers
+  ├─ 规则引擎（客观题）→ 本地比对
+  ├─ AI 批改（主观题，异步并行）→ DashScope
+  ├─ 知识点提取 → knowledge_points 表
+  └─ 掌握度更新 → student_mastery 表 (EMA)
+教师复核 ──► PUT /api/answers/:id/override → 风格追踪
+学生查看 ◄── GET /api/submissions/:id → CleanContent + KaTeX 渲染
+错题自动收录 → error_book 表
+学生错题本 ◄── GET /api/error-book → LLM 举一反三
 ```
 
 ---
 
-## 3. 数据库 Schema
+## 3. 数据库（8 张表）
 
-引擎：SQLite（WAL 模式，外键强制开启）
-
-### ER 关系
-
-```
-assignments  1 ──< N  questions
-     │
-     └──< N  submissions  1 ──< N  answers  >── 1  questions
-```
-
-### 表结构
-
-**assignments** — id, title, subject, description, teacher_name, class_name, due_date, status, created_at
-
-**questions** — id, assignment_id(FK), type, content, reference_answer, rubric, points, sort_order
-
-**submissions** — id, assignment_id(FK), student_name, status, image_url, submitted_at
-
-**answers** — id, submission_id(FK), question_id(FK), student_answer, is_correct, ai_confidence, ai_feedback, score, teacher_override, teacher_comment, image_url
-
-### 状态机
-
-```
-作业:  draft → published → closed
-提交:  submitted → grading → graded → reviewed
-                       ↑          │
-                       └── corrected ←┘ (订正后重新批改)
-```
+| 表 | 关键字段 | 用途 |
+|----|---------|------|
+| assignments | title, subject, class_name, teacher_name, status | 作业 |
+| questions | type, content, reference_answer, points, knowledge_points_json | 题目（含知识点缓存） |
+| submissions | student_name, status, image_url | 提交 |
+| answers | student_answer, is_correct, ai_score, score, teacher_override | 答案（AI 分+教师终分分离） |
+| knowledge_points | name, subject, parent_id (self FK) | 知识点树 |
+| question_knowledge_points | question_id, knowledge_point_id | 题目-知识点 N:M |
+| student_mastery | student_name, knowledge_point_id, mastery_score (EMA) | 掌握度 |
+| teacher_style_profile | teacher_name, question_type, avg_bias (Welford) | 教师风格 |
+| error_book | student_name, answer_id, knowledge_points_json | 错题本 |
 
 ---
 
-## 4. API 端点总览
+## 4. API 端点（30+）
 
-Base: `http://localhost:8000`
-
+### 作业
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/health` | 健康检查 |
-| POST | `/api/assignments` | 创建作业（含题目列表） |
-| GET | `/api/assignments` | 作业列表 |
-| GET | `/api/assignments/{id}` | 作业详情+题目 |
-| DELETE | `/api/assignments/{id}` | 删除作业 |
-| POST | `/api/assignments/{id}/grade-all` | **批量 AI 批改** |
-| POST | `/api/submissions` | 提交作业（multipart，逐题图片） |
-| GET | `/api/submissions` | 提交列表 |
-| GET | `/api/submissions/{id}` | 提交详情+答案+题目 |
-| POST | `/api/submissions/{id}/grade` | 触发 AI 批改 |
-| PUT | `/api/answers/{id}/override` | 教师覆写判分 |
-| POST | `/api/submissions/{id}/correct` | 学生订正+重新批改 |
-| GET | `/api/dashboard/teacher` | 教师看板统计 |
-| GET | `/api/dashboard/student` | 学生看板统计 |
-| GET | `/api/dashboard/review-queue` | **待复核队列** |
-| POST | `/api/ocr/test` | OCR 服务状态 |
+| POST/GET/PUT/DELETE | `/api/assignments[/{id}]` | CRUD + 编辑 |
+| GET | `/api/assignments/{id}/export` | CSV 导出 |
+
+### 提交 & 批改
+| POST | `/api/submissions` | multipart 提交 |
+| GET | `/api/submissions[/{id}]` | 列表/详情 |
+| POST | `/api/submissions/{id}/grade` | 触发批改（异步） |
+| POST | `/api/assignments/{id}/grade-all` | 批量批改（异步并行） |
+| PUT | `/api/answers/{id}/override` | 教师覆写（风格追踪） |
+| POST | `/api/submissions/{id}/correct` | 学生订正 |
+
+### 看板 & 分析
+| GET | `/api/dashboard/teacher\|student` | 看板统计 |
+| GET | `/api/dashboard/knowledge-graph/{subject}` | 知识树 |
+| GET | `/api/dashboard/student/{name}/diagnosis` | 根因诊断 |
+| GET | `/api/dashboard/teacher-style/{name}` | 风格报告 |
+| GET | `/api/dashboard/class-overview\|knowledge-heatmap\|trends` | 班级分析 |
+
+### 错题本 & 报告
+| GET/POST | `/api/error-book[/{id}/review\|similar-question\|sync\|stats]` | 错题本 |
+| GET | `/api/reports/student/{name}` | PDF 报告 |
 
 ---
 
-## 5. AI 服务层
+## 5. 核心设计决策
 
-### 调用链
+### extract_json — 括号计数状态机
+正则无法处理嵌套 JSON。改用字符级遍历 + 深度计数 + 字符串追踪 + 转义处理：
+- 自动剥离 markdown 代码围栏
+- 跟踪 `in_string` 跳过字符串内花括号
+- 跟踪 `escape` 跳过 `\"` / `\\`
+- 失败时从下一个 `{` 重试（容忍前面有集合符号）
+- 自动修复 AI 常见的尾部逗号 `{"a": 1,}`
 
-```
-trigger_grading()
-  │
-  ├─► ocr_image(path) → chat_with_image() → DashScope (qwen3.6-flash)
-  │    返回 {题号: 答案文本}
-  │
-  └─► grade_submission(type, content, ref, rubric, answer, pts)
-        ├─ choice / true_false → 规则引擎（本地字符串比对）
-        ├─ fill_blank → 精确匹配优先 → 失败则 AI
-        └─ short_answer / essay → chat() → DashScope
-```
+### KaTeX 数学渲染
+`MathRenderer` 组件用正则匹配 `$...$`（行内）和 `$$...$$`（块级），将公式交给 KaTeX 渲染为 HTML。接入 `CleanContent` → 题目内容、学生答案、AI 反馈、错题本统一获得数学渲染。
 
-### Prompt 体系
+### CleanContent — 内容清洗层
+所有用户可见文本在渲染前经过 CleanContent：
+1. 检测 raw JSON wrapper（OCR 失败残留）→ 提取真实内容
+2. 交给 MathRenderer 渲染 LaTeX 公式
+3. 普通文本原样输出
 
-| 模板 | 用途 | 文件 |
-|------|------|------|
-| OCR_SYSTEM_PROMPT | 识别手写/印刷文字+公式 | prompts/ocr.py |
-| GRADING_SYSTEM_PROMPT | K12 批改助手，输出 JSON | prompts/grading.py |
-| FEEDBACK_SYSTEM_PROMPT | 苏格拉底导师，引导不直接给答案 | prompts/feedback.py |
+### Glass Morphism 设计
+- 玻璃态卡片：`rgba(255,255,255,0.78)` + `backdrop-filter: blur(20px)` + 半透明边框
+- TiltCard：`useMotionValue` 追踪鼠标位置 → `useTransform` 计算 3D 旋转角
+- CountUp：`requestAnimationFrame` + easeOutCubic 缓动，数字从 0 递增
 
----
-
-## 6. 前端路由与页面
-
-| 路由 | 组件 | 说明 |
-|------|------|------|
-| `/` | Home | 角色选择（教师/学生卡片+stagger动画） |
-| `/teacher/dashboard` | TeacherDashboard | 5个可点击交互卡片+stagger入场 |
-| `/teacher/assignments` | AssignmentList | 作业列表（状态标签） |
-| `/teacher/assignments/new` | AssignmentCreate | 动态题目编辑器 |
-| `/teacher/assignments/:id` | AssignmentDetail | 作业详情+批量批改按钮 |
-| `/teacher/submissions/:id` | SubmissionReview | 逐题复核（stagger卡片） |
-| `/teacher/review-queue` | ReviewQueue | 待复核队列 |
-| `/student/dashboard` | StudentDashboard | 姓名输入+统计 |
-| `/student/assignments` | StudentAssignments | 我的作业+状态标签 |
-| `/student/assignments/:id` | SubmitPage | 逐题作答+逐题拍照 |
-| `/student/submissions/:id` | ResultPage | 分数环+逐题反馈 |
-| `/student/submissions/:id/correct` | CorrectPage | 错题订正（仅错题） |
+### 异步并行
+- OCR 并行：`asyncio.gather(*ocr_tasks)`
+- 逐题批改并行：`asyncio.gather(*grade_tasks)`
+- 批量提交并行：`asyncio.gather(*sub_tasks)`
+- N×30s 串行 → ~30s 总耗时
 
 ---
 
-## 7. MVP 设计决策
-
-### 7.1 极简设计原则
-
-- **纯内联 CSS-in-JS**：所有样式写在组件内 `style={{}}`，无 Tailwind/SCSS/CSS Modules
-- **零 UI 框架**：无 MUI/Ant Design/shadcn，全部手写组件
-- **轻量动效**：仅引入 Framer Motion（~140KB gzip），用于页面入场 stagger、hover 反馈、按钮 tap
-- **设计 Token**：`theme.ts` 集中管理颜色/圆角/阴影，全局一致
-- **中文优先**：字体栈 `PingFang SC → Microsoft YaHei → Hiragino Sans GB`
-
-### 7.2 置信度三级分流
-
-| 区间 | 颜色 | 处理 |
-|------|------|------|
-| > 0.9 | 绿 | 自动通过 |
-| 0.7-0.9 | 黄 | 建议复核 |
-| < 0.7 | 红 | 强制复核，进入待复核队列 |
-
-### 7.3 规则引擎 vs AI 分流
-
-- 客观题（choice/true_false）：纯规则匹配，零 API 调用
-- 填空题（fill_blank）：精确匹配优先 → AI 兜底
-- 主观题（short_answer/essay）：AI 综合评价
-
-### 7.4 苏格拉底反馈三级展开
-
-```
-Lv0: "先自己想想错在哪里？" → [💡 给我一点提示]
-Lv1: 展示 AI 引导性反馈      → [📖 展开完整解析]
-Lv2: 完整反馈 + 🌱 鼓励语
-```
-
-### 7.5 无认证 MVP 身份
-
-- 教师：无需登录，首页选择入口直接进入
-- 学生：输入姓名 → localStorage → 后续操作以此标识
-- 后续迭代计划：完整用户认证系统
-
-### 7.6 技术选型
-
-| 层 | 技术 | 理由 |
-|----|------|------|
-| 前端框架 | React 18 + TS + Vite | 类型安全、快速 HMR |
-| 样式 | 内联 CSS-in-JS | 零额外依赖，MVP 快速迭代 |
-| 动效 | Framer Motion | 轻量声明式动画 |
-| 路由 | react-router-dom v7 | 标准方案 |
-| 后端 | FastAPI + Pydantic v2 | 自动校验、OpenAPI 文档 |
-| 数据库 | SQLite (WAL) | 零配置、单文件部署 |
-| AI SDK | openai (官方) | 兼容 DashScope OpenAI API |
-| AI 模型 | **qwen3.6-flash** | 成本低、速度快、支持多模态 |
-
----
-
-## 8. 启动方式
+## 6. 启动
 
 ```bash
-cd frontend
-npm run dev    # concurrently 启动前端(:5173) + 后端(:8000)
+pip install -r backend/requirements.txt
+cd frontend && npm install
+cd frontend && npm run dev   # :5173 + :8000
 ```
 
-单命令启动，`Ctrl+C` 停止。
-
----
-
-> **文档版本：** v0.1.0-MVP | **更新日期：** 2026-05-08
+> **文档版本：** v0.2.1 | **更新日期：** 2026-05-25

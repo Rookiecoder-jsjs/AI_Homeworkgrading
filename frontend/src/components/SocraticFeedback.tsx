@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import MarkdownRenderer from './MarkdownRenderer';
+import CleanContent from './CleanContent';
 
 interface Props { feedback: string; isCorrect: boolean | null }
 
@@ -19,7 +19,7 @@ export default function SocraticFeedback({ feedback, isCorrect }: Props) {
         color: '#065f46',
         animation: 'fadeIn 0.3s ease both',
       }}>
-        <MarkdownRenderer content={feedback} />
+        <CleanContent content={feedback} tag="div" style={{ fontSize: 14, color: '#065f46', lineHeight: 1.7 }} />
       </div>
     );
   }
@@ -67,7 +67,7 @@ export default function SocraticFeedback({ feedback, isCorrect }: Props) {
         {level === 1 && (
           <>
             <div style={{ fontSize: 14, color: '#475569', lineHeight: 1.7 }}>
-              <MarkdownRenderer content={feedback} />
+              <CleanContent content={feedback} tag="div" />
             </div>
             <button onClick={() => setLevel(2)} style={{
               marginTop: 12, padding: '7px 18px', borderRadius: 8, border: 'none',
@@ -80,7 +80,7 @@ export default function SocraticFeedback({ feedback, isCorrect }: Props) {
         {level === 2 && (
           <>
             <div style={{ fontSize: 14, color: '#475569', lineHeight: 1.7, marginBottom: 12 }}>
-              <MarkdownRenderer content={feedback} />
+              <CleanContent content={feedback} tag="div" />
             </div>
             <div style={{
               padding: '10px 14px', borderRadius: 8, background: '#f0fdf4',

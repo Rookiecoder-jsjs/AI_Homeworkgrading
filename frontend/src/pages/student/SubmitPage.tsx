@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
+import { QUESTION_TYPE_LABEL } from '../../constants';
 import type { Assignment } from '../../types';
 
 export default function SubmitPage() {
@@ -87,14 +88,14 @@ export default function SubmitPage() {
                 color: '#4338ca', fontSize: 12, fontWeight: 700, flexShrink: 0,
               }}>{i + 1}</span>
               <span style={{ fontSize: 11, fontWeight: 700, color: '#4338ca', background: '#eef2ff', padding: '2px 10px', borderRadius: 6 }}>
-                {typeLabel[q.type]}
+                {QUESTION_TYPE_LABEL[q.type] ?? q.type}
               </span>
               <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>&middot; {q.points} 分</span>
             </div>
 
             {q.image_url && (
               <div style={{ marginBottom: 12, borderRadius: 10, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                <img src={`http://localhost:8000${q.image_url}`} alt="题目图片" style={{ width: '100%', maxHeight: 320, objectFit: 'contain', display: 'block', background: '#fafbfc' }} />
+                <img src={q.image_url} alt="题目图片" style={{ width: '100%', maxHeight: 320, objectFit: 'contain', display: 'block', background: '#fafbfc' }} />
               </div>
             )}
             <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.7, marginBottom: 14 }}>
@@ -153,7 +154,3 @@ export default function SubmitPage() {
   );
 }
 
-const typeLabel: Record<string, string> = {
-  choice: '选择题', true_false: '判断题', fill_blank: '填空题',
-  short_answer: '简答题', essay: '作文/证明题',
-};

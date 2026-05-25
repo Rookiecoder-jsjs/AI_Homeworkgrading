@@ -1,4 +1,8 @@
-const BASE = 'http://localhost:8000';
+const BASE = '';
+
+export function assetUrl(path: string) {
+  return path.startsWith('/') ? path : `/${path}`;
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -27,8 +31,17 @@ export const api = {
   getAssignment(id: number) {
     return request<any>(`/api/assignments/${id}`);
   },
+  updateAssignment(id: number, data: object) {
+    return request<any>(`/api/assignments/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
   deleteAssignment(id: number) {
     return request<any>(`/api/assignments/${id}`, { method: 'DELETE' });
+  },
+  exportGradesUrl(id: number) {
+    return `${BASE}/api/assignments/${id}/export`;
   },
 
   // Submissions
@@ -83,5 +96,58 @@ export const api = {
   },
   getStudentDashboard(name: string) {
     return request<any>(`/api/dashboard/student?name=${encodeURIComponent(name)}`);
+  },
+  getReviewQueue() {
+    return request<any[]>('/api/dashboard/review-queue');
+  },
+
+  // Knowledge Graph
+  getKnowledgeGraph(subject: string) {
+    return request<any>(`/api/dashboard/knowledge-graph/${encodeURIComponent(subject)}`);
+  },
+  getStudentDiagnosis(name: string) {
+    return request<any>(`/api/dashboard/student/${encodeURIComponent(name)}/diagnosis`);
+  },
+
+  // Teacher Style
+  getTeacherStyle(teacherName: string) {
+    return request<any>(`/api/dashboard/teacher-style/${encodeURIComponent(teacherName)}`);
+  },
+
+  // Error Book
+  getErrorBook(studentName: string, subject = '') {
+    const params = new URLSearchParams({ student_name: studentName });
+    if (subject) params.set('subject', subject);
+    return request<any[]>(`/api/error-book?${params}`);
+  },
+  async syncErrorBook(studentName: string) {
+    const res = await fetch(`${BASE}/api/error-book/sync?student_name=${encodeURIComponent(studentName)}`, { method: 'POST' });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  async generateSimilarQuestion(entryId: number) {
+    const res = await fetch(`${BASE}/api/error-book/${entryId}/similar-question`, { method: 'POST' });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  // Class Analytics
+  getClassOverview(teacherName = '') {
+    const qs = teacherName ? `?teacher_name=${encodeURIComponent(teacherName)}` : '';
+    return request<any[]>(`/api/dashboard/class-overview${qs}`);
+  },
+  getKnowledgeHeatmap(className: string) {
+    return request<any[]>(`/api/dashboard/knowledge-heatmap?class_name=${encodeURIComponent(className)}`);
+  },
+  getTrends(className: string, weeks = 8) {
+    return request<any[]>(`/api/dashboard/trends?class_name=${encodeURIComponent(className)}&weeks=${weeks}`);
+  },
+
+  // PDF Reports
+  downloadReportUrl(studentName: string, className = '', teacherName = '') {
+    const p = new URLSearchParams();
+    if (className) p.set('class_name', className);
+    if (teacherName) p.set('teacher_name', teacherName);
+    return `${BASE}/api/reports/student/${encodeURIComponent(studentName)}?${p}`;
   },
 };

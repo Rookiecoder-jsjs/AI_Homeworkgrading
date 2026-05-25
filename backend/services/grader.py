@@ -1,11 +1,9 @@
-import json
-import re
-
 from services.ai_client import chat
 from prompts.grading import GRADING_SYSTEM_PROMPT, build_grading_prompt
+from utils import extract_json
 
 
-def grade_submission(
+async def grade_submission(
     question_type: str,
     question_content: str,
     reference_answer: str,
@@ -42,27 +40,27 @@ def grade_submission(
         {"role": "system", "content": GRADING_SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},
     ]
-    result = chat(messages, temperature=0.3)
+    result = await chat(messages, temperature=0.3)
 
-    try:
-        json_match = re.search(r"\{[\s\S]*\}", result)
-        if json_match:
-            data = json.loads(json_match.group())
-            return {
-                "is_correct": data.get("is_correct", False),
-                "confidence": data.get("confidence", 0.5),
-                "score": min(data.get("score", 0), max_points),
-                "feedback": data.get("feedback", ""),
-                "key_points": data.get("key_points", []),
-            }
-    except (json.JSONDecodeError, KeyError):
-        pass
+    data = extract_json(result)
+    if data:
+        return {
+            "is_correct": data.get("is_correct", False),
+            "confidence": data.get("confidence", 0.5),
+            "score": min(data.get("score", 0), max_points),
+            "feedback": data.get("feedback", ""),
+            "key_points": data.get("key_points", []),
+        }
 
+    # AI returned non-JSON — log the raw output and return a graceful fallback
+    import logging
+    logger = logging.getLogger("grader")
+    logger.warning(f"AI returned non-JSON for {question_type} question. Raw: {result[:200]}")
     return {
         "is_correct": False,
-        "confidence": 0.3,
+        "confidence": 0.0,
         "score": 0,
-        "feedback": result[:500],
+        "feedback": "AI 暂无法批改此题，请教师手动评阅。",
         "key_points": [],
     }
 

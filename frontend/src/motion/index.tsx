@@ -1,4 +1,4 @@
-import { motion, type Variants } from 'framer-motion';
+import { motion, useMotionValue, useTransform, type Variants } from 'framer-motion';
 import type { ReactNode } from 'react';
 
 // ── Shared easings ───────────────────────────────────────
@@ -119,6 +119,33 @@ export function Magnetic({ children, style }: { children: ReactNode; style?: Rea
       style={{ display: 'inline-block', ...style }}
     >
       {children}
+    </motion.div>
+  );
+}
+
+// ── TiltCard (3D mouse-follow perspective) ───────────────
+export function TiltCard({ children, style, className }: { children: ReactNode; style?: React.CSSProperties; className?: string }) {
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const rotateX = useTransform(y, [-0.5, 0.5], [4, -4]);
+  const rotateY = useTransform(x, [-0.5, 0.5], [-4, 4]);
+
+  const handleMouse = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    x.set((e.clientX - rect.left) / rect.width - 0.5);
+    y.set((e.clientY - rect.top) / rect.height - 0.5);
+  };
+
+  return (
+    <motion.div
+      onMouseMove={handleMouse}
+      onMouseLeave={() => { x.set(0); y.set(0); }}
+      style={{ perspective: 600, ...style }}
+      className={className}
+    >
+      <motion.div style={{ rotateX, rotateY, transition: 'box-shadow 0.2s' }}>
+        {children}
+      </motion.div>
     </motion.div>
   );
 }

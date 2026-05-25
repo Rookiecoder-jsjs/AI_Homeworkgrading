@@ -10,10 +10,16 @@ export default function StudentAssignmentListPage() {
   const [mySubs, setMySubs] = useState<Submission[]>([]);
 
   useEffect(() => {
-    api.listAssignments('published').then(setAssignments).catch(console.error);
-    api.listSubmissions().then((all) => {
-      setMySubs(all.filter((s: any) => s.student_name === name));
-    }).catch(console.error);
+    const load = () => {
+      api.listAssignments('published').then(setAssignments).catch(console.error);
+      api.listSubmissions().then((all) => {
+        setMySubs(all.filter((s: any) => s.student_name === name));
+      }).catch(console.error);
+    };
+    load();
+    // Auto-refresh every 15s so students see status changes without manual reload
+    const interval = setInterval(load, 15000);
+    return () => clearInterval(interval);
   }, [name]);
 
   const getStatus = (asgId: number) => {
@@ -74,10 +80,11 @@ export default function StudentAssignmentListPage() {
                 : s.status === 'graded' ? '#d97706'
                 : s.status === 'corrected' ? '#4f46e5'
                 : '#0369a1',
+              animation: s.status === 'graded' ? 'pulse-ring 2s infinite' : undefined,
             }}>
               {!s.submitted ? '去提交'
                 : s.status === 'reviewed' ? '✓ 已复核'
-                : s.status === 'graded' ? 'AI 已批改'
+                : s.status === 'graded' ? '🆕 AI 已批改'
                 : s.status === 'corrected' ? '已订正'
                 : '等待批改'}
             </span>

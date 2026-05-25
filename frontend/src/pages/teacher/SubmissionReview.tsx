@@ -3,8 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../../api/client';
 import { StaggerContainer, StaggerItem } from '../../motion';
+import { QUESTION_TYPE_SHORT } from '../../constants';
 import type { Submission } from '../../types';
 import GradingResult from '../../components/GradingResult';
+import CleanContent from '../../components/CleanContent';
 
 export default function SubmissionReviewPage() {
   const { id } = useParams<{ id: string }>();
@@ -108,14 +110,14 @@ export default function SubmissionReviewPage() {
       <div style={{ maxWidth: 760, margin: '0 auto', padding: '24px 24px 96px' }}>
         {sub.image_url && (
           <div style={{ marginBottom: 28, borderRadius: 14, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-            <img src={`http://localhost:8000${sub.image_url}`} alt="作业照片" style={{ width: '100%', display: 'block' }} />
+            <img src={sub.image_url} alt="作业照片" style={{ width: '100%', display: 'block' }} />
           </div>
         )}
 
         <StaggerContainer>
           {answers.map((ans, i) => {
             const q = sub.questions?.find((q) => q.id === ans.question_id);
-            const typeLabel = typeMap[q?.type ?? ''] ?? q?.type;
+            const typeLabel = QUESTION_TYPE_SHORT[q?.type ?? ''] ?? q?.type;
             const isHighConf = (ans.ai_confidence ?? 0) > 0.9 && ans.teacher_override === 0;
             const isLowConf = ans.is_correct !== null && (ans.ai_confidence ?? 1) < 0.7 && ans.teacher_override === 0;
             const isReviewed = ans.teacher_override === 1;
@@ -159,10 +161,10 @@ export default function SubmissionReviewPage() {
                     <div style={{ padding: '16px 20px 0' }}>
                       {q?.image_url && (
                         <div style={{ marginBottom: 10, borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                          <img src={`http://localhost:8000${q.image_url}`} alt="题目图片" style={{ width: '100%', maxHeight: 320, objectFit: 'contain', display: 'block', background: '#fafbfc' }} />
+                          <img src={q.image_url} alt="题目图片" style={{ width: '100%', maxHeight: 320, objectFit: 'contain', display: 'block', background: '#fafbfc' }} />
                         </div>
                       )}
-                      {q && <p style={{ fontSize: 15, color: '#334155', lineHeight: 1.7, margin: '0 0 12px' }}>{q.content}</p>}
+                      {q && <CleanContent content={q.content} style={{ fontSize: 15, color: '#334155', lineHeight: 1.7, margin: '0 0 12px' }} />}
                       <GradingResult answer={ans} questionType={q?.type}
                         onOverride={async (aid, correct, sc, comment) => {
                           await api.overrideAnswer(aid, { is_correct: correct, score: sc, teacher_comment: comment });
@@ -181,10 +183,6 @@ export default function SubmissionReviewPage() {
   );
 }
 
-const typeMap: Record<string, string> = {
-  choice: 'CHOICE', true_false: 'TRUE/FALSE', fill_blank: 'FILL',
-  short_answer: 'SHORT', essay: 'ESSAY',
-};
 const backBtn: React.CSSProperties = {
   border: 'none', background: 'none', color: '#4338ca', cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: 0,
 };

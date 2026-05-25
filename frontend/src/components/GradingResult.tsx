@@ -1,4 +1,5 @@
 import type { Answer } from '../types';
+import CleanContent from './CleanContent';
 import ConfidenceBadge from './ConfidenceBadge';
 import SocraticFeedback from './SocraticFeedback';
 
@@ -24,7 +25,7 @@ export default function GradingResult({ answer, questionType, onOverride, readOn
       {answer.image_url && (
         <div style={{ marginBottom: 12 }}>
           <img
-            src={`http://localhost:8000${answer.image_url}`}
+            src={answer.image_url}
             alt="题目照片"
             style={{
               maxWidth: '100%', maxHeight: 220, borderRadius: 8,
@@ -46,9 +47,7 @@ export default function GradingResult({ answer, questionType, onOverride, readOn
           }}>
             student answer
           </div>
-          <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.7 }}>
-            {answer.student_answer}
-          </div>
+          <CleanContent content={answer.student_answer} tag="div" style={{ fontSize: 14, color: '#334155', lineHeight: 1.7 }} />
         </div>
       )}
 

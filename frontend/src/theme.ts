@@ -23,12 +23,17 @@ export const theme = {
     surface: '#ffffff',
     border: '#e2e8f0',
     borderLight: '#f1f5f9',
+    // Glass morphism
+    glassBg: 'rgba(255,255,255,0.72)',
+    glassBorder: 'rgba(255,255,255,0.3)',
+    glassShadow: '0 8px 32px rgba(0,0,0,0.04)',
   },
   radius: {
     sm: 6,
     md: 10,
     lg: 14,
     xl: 18,
+    xxl: 24,
     full: 999,
   },
   shadow: {
@@ -36,7 +41,9 @@ export const theme = {
     sm: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
     md: '0 4px 12px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04)',
     lg: '0 8px 24px rgba(0,0,0,0.08), 0 4px 8px rgba(0,0,0,0.04)',
+    xl: '0 16px 48px rgba(0,0,0,0.1)',
     glow: (c: string) => `0 6px 24px ${c}20`,
+    glowLg: (c: string) => `0 12px 40px ${c}28`,
   },
   font: {
     stack: '"PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -46,6 +53,7 @@ export const theme = {
     fast: '0.15s ease',
     normal: '0.2s ease',
     slow: '0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    spring: '0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
   },
 } as const;
 
