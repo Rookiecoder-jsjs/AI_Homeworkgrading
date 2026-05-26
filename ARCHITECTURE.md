@@ -1,6 +1,6 @@
 # AI_Homeworkgrading — 架构文档
 
-> **当前版本：v0.2.1**
+> **当前版本：v0.2.2**
 > 前端纯内联 CSS-in-JS + Glass Morphism + Framer Motion + KaTeX。后端 FastAPI + SQLite + AsyncOpenAI 异步并行。
 
 ## 1. 项目结构
@@ -55,7 +55,7 @@ AI_Homeworkgrading/
     │   ├── error_book.py / question_generator.py
     │   ├── class_analytics.py       # 热力图 + 趋势 + 对比
     │   └── pdf_export.py            # fpdf2 A4 报告
-    └── prompts/                     # 5 套 Prompt 模板
+    └── prompts/                     # 6 套 Prompt 模板
 ```
 
 ---
@@ -66,9 +66,11 @@ AI_Homeworkgrading/
 教师创建/编辑作业 ──► POST/PUT /api/assignments
 学生逐题作答+拍照 ──► POST /api/submissions (multipart + JSON)
 教师触发批改 ──► POST /api/submissions/:id/grade
+  ├─ 参考答案空值守卫 → 无答案直接拒绝，提示补充
   ├─ OCR（异步并行）→ UPDATE answers
   ├─ 规则引擎（客观题）→ 本地比对
-  ├─ AI 批改（主观题，异步并行）→ DashScope
+  ├─ AI 批改（主观题，异步并行）→ DashScope（基于参考答案锚定）
+  ├─ 条件判分 → 无分值仅判对错，有分值 0-N 范围评分
   ├─ 知识点提取 → knowledge_points 表
   └─ 掌握度更新 → student_mastery 表 (EMA)
 教师复核 ──► PUT /api/answers/:id/override → 风格追踪
@@ -106,10 +108,12 @@ AI_Homeworkgrading/
 ### 提交 & 批改
 | POST | `/api/submissions` | multipart 提交 |
 | GET | `/api/submissions[/{id}]` | 列表/详情 |
-| POST | `/api/submissions/{id}/grade` | 触发批改（异步） |
+| POST | `/api/submissions/{id}/grade` | 触发批改（异步，含参考答案守卫） |
 | POST | `/api/assignments/{id}/grade-all` | 批量批改（异步并行） |
 | PUT | `/api/answers/{id}/override` | 教师覆写（风格追踪） |
 | POST | `/api/submissions/{id}/correct` | 学生订正 |
+| POST | `/api/ocr/question` | 题目图片 OCR |
+| POST | `/api/ocr/reference-answer` | 🆕 参考答案图片 OCR |
 
 ### 看板 & 分析
 | GET | `/api/dashboard/teacher\|student` | 看板统计 |
@@ -148,6 +152,12 @@ AI_Homeworkgrading/
 - TiltCard：`useMotionValue` 追踪鼠标位置 → `useTransform` 计算 3D 旋转角
 - CountUp：`requestAnimationFrame` + easeOutCubic 缓动，数字从 0 递增
 
+### 参考答案锚定 + 条件判分
+`grader.py:16-23` 在批改入口检查 `reference_answer`，为空则直接短路返回，不调用 AI。确保所有批改都有参考答案作为比较基准，消除 AI 臆断。
+- `build_grading_prompt()` 根据 `max_points` 动态生成指令：>0 时给分值范围，<=0 时告诉 AI 不评分
+- AI 返回后 score 二次校验：`max_points > 0 else 0`
+- 无分值 feedback 前加 `[未计分]` 前缀
+
 ### 异步并行
 - OCR 并行：`asyncio.gather(*ocr_tasks)`
 - 逐题批改并行：`asyncio.gather(*grade_tasks)`
@@ -164,4 +174,4 @@ cd frontend && npm install
 cd frontend && npm run dev   # :5173 + :8000
 ```
 
-> **文档版本：** v0.2.1 | **更新日期：** 2026-05-25
+> **文档版本：** v0.2.2 | **更新日期：** 2026-05-26

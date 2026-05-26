@@ -17,6 +17,7 @@ export default function AssignmentCreatePage() {
   const [questions, setQuestions] = useState<QuestionDraft[]>([]);
   const [saving, setSaving] = useState(false);
   const [ocrLoading, setOcrLoading] = useState<Record<number, boolean>>({});
+  const [refAnswerOcrLoading, setRefAnswerOcrLoading] = useState<Record<number, boolean>>({});
 
   const handleQuestionOCR = async (idx: number) => {
     const input = document.createElement('input');
@@ -38,6 +39,24 @@ export default function AssignmentCreatePage() {
         }
       } catch (e: any) { alert('OCR 识别失败：' + e.message); }
       setOcrLoading((p) => ({ ...p, [idx]: false }));
+    };
+    input.click();
+  };
+
+  const handleRefAnswerOCR = async (idx: number) => {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      setRefAnswerOcrLoading((p) => ({ ...p, [idx]: true }));
+      try {
+        const result = await api.ocrReferenceAnswer(file);
+        if (result.reference_answer) {
+          updateQ(idx, 'reference_answer', result.reference_answer);
+        }
+      } catch (e: any) { alert('答案识别失败：' + e.message); }
+      setRefAnswerOcrLoading((p) => ({ ...p, [idx]: false }));
     };
     input.click();
   };
@@ -123,7 +142,7 @@ export default function AssignmentCreatePage() {
                 opacity: ocrLoading[idx] ? 0.5 : 1,
               }}
             >
-              {ocrLoading[idx] ? '识别中...' : '📷 拍照识别'}
+              {ocrLoading[idx] ? '识别中...' : '📷 拍题识别'}
             </button>
             <button onClick={() => removeQ(idx)} style={{
               padding: '4px 12px', borderRadius: 6, border: '1px solid #fecaca',
@@ -131,7 +150,32 @@ export default function AssignmentCreatePage() {
             }}>删除</button>
           </div>
           <input placeholder="题目内容" value={q.content} onChange={(e) => updateQ(idx, 'content', e.target.value)} style={{ ...inputStyle, width: '100%', marginBottom: 8, fontSize: 13 }} />
-          <input placeholder="参考答案" value={q.reference_answer} onChange={(e) => updateQ(idx, 'reference_answer', e.target.value)} style={{ ...inputStyle, width: '100%', marginBottom: 8, fontSize: 13 }} />
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+            <input
+              placeholder="参考答案（必填，用于AI批改锚定）"
+              value={q.reference_answer}
+              onChange={(e) => updateQ(idx, 'reference_answer', e.target.value)}
+              style={{
+                ...inputStyle, flex: 1, fontSize: 13,
+                borderColor: q.reference_answer.trim() ? '#e2e8f0' : '#fecaca',
+                background: q.reference_answer.trim() ? '#fff' : '#fff5f5',
+              }}
+            />
+            <button
+              onClick={() => handleRefAnswerOCR(idx)}
+              disabled={refAnswerOcrLoading[idx]}
+              title="拍照上传参考答案图片，自动识别文字"
+              style={{
+                padding: '4px 12px', borderRadius: 6, flexShrink: 0,
+                border: '1px solid #bbf7d0', background: '#f0fdf4',
+                color: '#166534', cursor: 'pointer', fontSize: 11, fontWeight: 600,
+                opacity: refAnswerOcrLoading[idx] ? 0.5 : 1,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {refAnswerOcrLoading[idx] ? '识别中...' : '📷 上传答案'}
+            </button>
+          </div>
           {['short_answer', 'essay'].includes(q.type) && (
             <input placeholder="评分标准（可选）" value={q.rubric} onChange={(e) => updateQ(idx, 'rubric', e.target.value)} style={{ ...inputStyle, width: '100%', fontSize: 13 }} />
           )}

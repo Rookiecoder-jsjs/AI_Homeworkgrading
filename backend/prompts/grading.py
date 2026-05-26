@@ -40,12 +40,15 @@ def build_grading_prompt(
     max_points: int,
 ) -> str:
     rubric_text = f"\n评分标准：{rubric}" if rubric else ""
+    if max_points > 0:
+        scoring_instruction = f"\n满分：{max_points} 分\n请根据参考答案和评分标准给出 0-{max_points} 的分数。"
+    else:
+        scoring_instruction = "\n此题教师未设置分值，不进行评分（score 统一返回 0），仅判断对错并给出反馈。"
     return f"""请批改以下学生答案：
 
 题目类型：{question_type}
 题目内容：{question_content}
-参考答案：{reference_answer}{rubric_text}
-满分：{max_points} 分
+参考答案：{reference_answer}{rubric_text}{scoring_instruction}
 
 学生答案：{student_answer}
 

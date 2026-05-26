@@ -8,7 +8,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from config import UPLOAD_DIR
 from database import get_db
 from models import AnswerUpdate, CorrectRequest
-from prompts.ocr import QUESTION_OCR_PROMPT
+from prompts.ocr import QUESTION_OCR_PROMPT, REFERENCE_ANSWER_OCR_PROMPT
 from services.ai_client import chat_with_image
 from services.grader import grade_submission
 from services.knowledge_graph import extract_knowledge_points, update_student_mastery
@@ -260,6 +260,26 @@ async def ocr_question(image: UploadFile):
         data = {"questions": [{"content": raw, "type": "short_answer", "reference_answer": "", "points": 5}]}
 
     return {"image_url": image_url, "questions": data.get("questions", [])}
+
+
+# ── reference answer OCR (teacher uploads answer image) ─────
+
+@router.post("/ocr/reference-answer")
+async def ocr_reference_answer(image: UploadFile):
+    """OCR a teacher-provided reference answer image into clean text."""
+    image_url = await save_upload(image, UPLOAD_DIR)
+    filepath = os.path.join(UPLOAD_DIR, os.path.basename(image_url.lstrip("/")))
+
+    with open(filepath, "rb") as f:
+        img_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+    messages = [{"role": "system", "content": REFERENCE_ANSWER_OCR_PROMPT}]
+    raw = await chat_with_image(messages, img_b64, temperature=0.1)
+    data = extract_json(raw)
+    if not data:
+        data = {"reference_answer": raw}
+
+    return {"image_url": image_url, "reference_answer": data.get("reference_answer", "")}
 
 
 # ── ocr status ────────────────────────────────────────────

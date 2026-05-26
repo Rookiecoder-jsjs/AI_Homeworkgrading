@@ -114,6 +114,15 @@ export const api = {
     return request<any>(`/api/dashboard/teacher-style/${encodeURIComponent(teacherName)}`);
   },
 
+  // OCR for teacher-provided reference answer image
+  async ocrReferenceAnswer(file: File) {
+    const form = new FormData();
+    form.append('image', file);
+    const res = await fetch(`${BASE}/api/ocr/reference-answer`, { method: 'POST', body: form });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json() as Promise<{ image_url: string; reference_answer: string }>;
+  },
+
   // Error Book
   getErrorBook(studentName: string, subject = '') {
     const params = new URLSearchParams({ student_name: studentName });

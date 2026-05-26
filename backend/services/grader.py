@@ -13,6 +13,15 @@ async def grade_submission(
 ) -> dict:
     """Grade a single answer and return structured result."""
 
+    if not (reference_answer and reference_answer.strip()):
+        return {
+            "is_correct": False,
+            "confidence": 0.0,
+            "score": 0,
+            "feedback": "未提供参考答案，无法进行批改。请在题目中补充参考答案后重新批改。",
+            "key_points": [],
+        }
+
     # Objective questions: rule-based first, AI as fallback
     if question_type == "choice":
         return _grade_choice(student_answer, reference_answer, max_points)
@@ -44,11 +53,14 @@ async def grade_submission(
 
     data = extract_json(result)
     if data:
+        feedback = data.get("feedback", "")
+        if max_points <= 0:
+            feedback = f"[未计分] {feedback}"
         return {
             "is_correct": data.get("is_correct", False),
             "confidence": data.get("confidence", 0.5),
-            "score": min(data.get("score", 0), max_points),
-            "feedback": data.get("feedback", ""),
+            "score": min(data.get("score", 0), max_points) if max_points > 0 else 0,
+            "feedback": feedback,
             "key_points": data.get("key_points", []),
         }
 
