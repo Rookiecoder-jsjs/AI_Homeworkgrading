@@ -49,7 +49,6 @@ export default function SubmitPage() {
       const answerList = (assignment?.questions ?? []).map((q) => ({
         question_id: q.id,
         student_answer: answers[q.id] || '',
-        has_image: String(!!images[q.id]),
       }));
       form.append('answers_json', JSON.stringify(answerList));
       const result = await api.submitAssignment(form);

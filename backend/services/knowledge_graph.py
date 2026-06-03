@@ -79,11 +79,17 @@ async def extract_knowledge_points(question_id: int, question_content: str, subj
     return kps
 
 
-def build_dependency_graph(subject: str = "") -> dict[str, list[str]]:
-    """Build adjacency list from knowledge_points parent_id relationships."""
+def build_dependency_graph(subject: str = "") -> tuple[dict[str, list[str]], dict[int, str]]:
+    """Build adjacency list from knowledge_points parent_id relationships.
+
+    Returns:
+        (children, id_to_name) where
+        - children: {parent_name: [child_name, ...]} adjacency list
+        - id_to_name: {kp_id: name} lookup
+    """
     conn = get_db()
     query = "SELECT id, name, parent_id FROM knowledge_points"
-    params = []
+    params: list = []
     if subject:
         query += " WHERE subject = ?"
         params.append(subject)
@@ -91,7 +97,7 @@ def build_dependency_graph(subject: str = "") -> dict[str, list[str]]:
     conn.close()
 
     children: dict[str, list[str]] = {}
-    id_to_name = {}
+    id_to_name: dict[int, str] = {}
     for r in rows:
         id_to_name[r["id"]] = r["name"]
         children[r["name"]] = []
@@ -107,7 +113,13 @@ def build_dependency_graph(subject: str = "") -> dict[str, list[str]]:
 
 
 def compute_root_causes(wrong_question_ids: list[int]) -> list[dict]:
-    """Given wrong question IDs, trace KPs upward to find common root causes."""
+    """Given wrong question IDs, trace KPs upward to find common root causes.
+
+    Performance: pulls the entire `knowledge_points` table once and does BFS
+    in Python, instead of one SELECT per visited node. The table is bounded
+    by the number of KPs in the curriculum (typically hundreds), not by
+    submissions or answers.
+    """
     conn = get_db()
     all_kps: set[int] = set()
     if wrong_question_ids:
@@ -118,7 +130,17 @@ def compute_root_causes(wrong_question_ids: list[int]) -> list[dict]:
         ).fetchall()
         all_kps = {r["knowledge_point_id"] for r in kp_rows}
 
-    # BFS upward from each KP
+    if not all_kps:
+        conn.close()
+        return []
+
+    # Single fetch of all KP metadata — replaces the N+1 inside the BFS.
+    all_kp_rows = conn.execute("SELECT id, name, parent_id FROM knowledge_points").fetchall()
+    conn.close()
+    kp_info: dict[int, tuple[str, int | None]] = {
+        r["id"]: (r["name"], r["parent_id"]) for r in all_kp_rows
+    }
+
     root_scores: dict[int, int] = {}  # kp_id -> affected_count
     kp_id_to_name: dict[int, str] = {}
 
@@ -130,22 +152,18 @@ def compute_root_causes(wrong_question_ids: list[int]) -> list[dict]:
             if cur in visited:
                 continue
             visited.add(cur)
-            kp_row = conn.execute("SELECT id, name, parent_id FROM knowledge_points WHERE id = ?", [cur]).fetchone()
-            if not kp_row:
+            info = kp_info.get(cur)
+            if info is None:
                 continue
-            kp_id_to_name[cur] = kp_row["name"]
+            name, parent_id = info
+            kp_id_to_name[cur] = name
             root_scores[cur] = root_scores.get(cur, 0) + 1
-            if kp_row["parent_id"] and kp_row["parent_id"] not in visited:
-                queue.append(kp_row["parent_id"])
+            if parent_id and parent_id not in visited:
+                queue.append(parent_id)
 
-    conn.close()
-
-    # Sort by affected count descending, take top-level roots (no parents or parents not in set)
     sorted_roots = sorted(root_scores.items(), key=lambda x: -x[1])
     result = []
     for kp_id, count in sorted_roots[:8]:
-        kp_row_data = {"id": kp_id, "name": kp_id_to_name.get(kp_id, f"KP#{kp_id}"), "depth": 0}
-        # Check if it's a root (no parent or parent not in our traced set)
         result.append({
             "knowledge_point_id": kp_id,
             "name": kp_id_to_name.get(kp_id, f"KP#{kp_id}"),

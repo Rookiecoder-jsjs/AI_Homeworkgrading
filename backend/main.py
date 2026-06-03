@@ -6,11 +6,11 @@ from database import init_db
 from config import UPLOAD_DIR
 from routers import assignments, dashboard, error_book, grading, pdf_export, submissions
 
-app = FastAPI(title="AI 作业批改系统", version="0.1.0")
+app = FastAPI(title="AI 作业批改系统", version="0.2.2")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -65,8 +65,6 @@ async def grade_submission(
         }
 
     # AI returned non-JSON — log the raw output and return a graceful fallback
-    import logging
-    logger = logging.getLogger("grader")
     logger.warning(f"AI returned non-JSON for {question_type} question. Raw: {result[:200]}")
     return {
         "is_correct": False,

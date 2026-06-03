@@ -1,0 +1,11 @@
+{
+  "name": "ai-homeworkgrading",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "dev:web": "cd frontend && npx vite --host 0.0.0.0",
+    "dev:api": "node scripts/dev-api.js",
+    "install": "cd frontend && npm install"
+  }
+}

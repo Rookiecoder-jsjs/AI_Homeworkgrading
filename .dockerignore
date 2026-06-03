@@ -1,0 +1,40 @@
+# Local dev artefacts
+.git/
+.gitignore
+.ruff_cache/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Node (frontend dev — not part of backend image)
+node_modules/
+frontend/
+
+# Test artefacts
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Large media / generated
+backend/data/*.db
+backend/data/*.db-shm
+backend/data/*.db-wal
+backend/uploads/*
+backend/fonts/*.otf
+backend/fonts/*.ttf
+!backend/uploads/.gitkeep
+!backend/fonts/.gitkeep
+
+# Docs (not needed in image)
+README.md
+ARCHITECTURE.md
+PRD.md
+CHANGELOG.md

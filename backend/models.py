@@ -88,8 +88,13 @@ class AnswerUpdate(BaseModel):
     teacher_override: int = 1
 
 
+class CorrectItem(BaseModel):
+    question_id: int
+    student_answer: str = ""
+
+
 class CorrectRequest(BaseModel):
-    answers: list  # [{"question_id": 1, "student_answer": "..."}, ...]
+    answers: list[CorrectItem]
 
 
 # ── Dashboard ─────────────────────────────────────────────

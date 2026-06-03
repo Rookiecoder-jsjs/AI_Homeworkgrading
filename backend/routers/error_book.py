@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 
-from database import get_db
+from database import db_session
 from services.error_book import add_to_error_book, auto_add_wrong_answers, get_error_book, get_error_book_stats, mark_as_reviewed
 from services.question_generator import generate_similar_question
 
@@ -17,14 +17,13 @@ def list_entries(
 ):
     entries = get_error_book(student_name, subject, kp, limit, offset)
     # Enrich with question content
-    conn = get_db()
-    for e in entries:
-        q = conn.execute("SELECT content, type, reference_answer FROM questions WHERE id = ?", [e["question_id"]]).fetchone()
-        if q:
-            e["question_content"] = q["content"]
-            e["question_type"] = q["type"]
-            e["reference_answer"] = q["reference_answer"]
-    conn.close()
+    with db_session(commit=False) as conn:
+        for e in entries:
+            q = conn.execute("SELECT content, type, reference_answer FROM questions WHERE id = ?", [e["question_id"]]).fetchone()
+            if q:
+                e["question_content"] = q["content"]
+                e["question_type"] = q["type"]
+                e["reference_answer"] = q["reference_answer"]
     return entries
 
 
@@ -44,14 +43,11 @@ def review_entry(entry_id: int):
 
 @router.post("/{entry_id}/similar-question")
 async def generate_similar(entry_id: int):
-    conn = get_db()
-    entry = conn.execute("SELECT * FROM error_book WHERE id = ?", [entry_id]).fetchone()
-    if not entry:
-        conn.close()
-        return {"ok": False, "message": "错题记录不存在"}
-
-    q = conn.execute("SELECT content, type, reference_answer FROM questions WHERE id = ?", [entry["question_id"]]).fetchone()
-    conn.close()
+    with db_session(commit=False) as conn:
+        entry = conn.execute("SELECT * FROM error_book WHERE id = ?", [entry_id]).fetchone()
+        if not entry:
+            return {"ok": False, "message": "错题记录不存在"}
+        q = conn.execute("SELECT content, type, reference_answer FROM questions WHERE id = ?", [entry["question_id"]]).fetchone()
 
     if not q:
         return {"ok": False, "message": "原题不存在"}

@@ -33,6 +33,10 @@ frontend/dist/
 *.swp
 *.swo
 
+# CJK font binaries (downloaded via scripts/download_chinese_font.py)
+backend/fonts/*.otf
+backend/fonts/*.ttf
+
 # OS
 .DS_Store
 Thumbs.db

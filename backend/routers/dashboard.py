@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 
-from database import get_db
+from database import db_session
 from models import StudentDashboard, TeacherDashboard, TeacherStyleReport
 from services.knowledge_graph import compute_root_causes, get_student_mastery_map
 from services.teacher_style import get_teacher_style_report
@@ -10,16 +10,15 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 @router.get("/teacher", response_model=TeacherDashboard)
 def teacher_dashboard():
-    conn = get_db()
-    row = conn.execute(
-        """SELECT
-           (SELECT COUNT(*) FROM assignments) as total_assignments,
-           (SELECT COUNT(*) FROM submissions) as total_submissions,
-           (SELECT COUNT(*) FROM submissions WHERE status IN ('graded','reviewed','corrected')) as graded,
-           (SELECT COUNT(*) FROM answers WHERE ai_confidence < 0.7 AND teacher_override = 0) as pending,
-           (SELECT COALESCE(AVG(score), 0) FROM answers WHERE score > 0) as avg_score"""
-    ).fetchone()
-    conn.close()
+    with db_session(commit=False) as conn:
+        row = conn.execute(
+            """SELECT
+               (SELECT COUNT(*) FROM assignments) as total_assignments,
+               (SELECT COUNT(*) FROM submissions) as total_submissions,
+               (SELECT COUNT(*) FROM submissions WHERE status IN ('graded','reviewed','corrected')) as graded,
+               (SELECT COUNT(*) FROM answers WHERE ai_confidence < 0.7 AND teacher_override = 0) as pending,
+               (SELECT COALESCE(AVG(score), 0) FROM answers WHERE score > 0) as avg_score"""
+        ).fetchone()
     return TeacherDashboard(
         total_assignments=row["total_assignments"],
         total_submissions=row["total_submissions"],
@@ -31,25 +30,25 @@ def teacher_dashboard():
 
 @router.get("/student", response_model=StudentDashboard)
 def student_dashboard(name: str = ""):
-    conn = get_db()
-    total = conn.execute("SELECT COUNT(*) as cnt FROM assignments WHERE status = 'published'").fetchone()["cnt"]
+    with db_session(commit=False) as conn:
+        total = conn.execute("SELECT COUNT(*) as cnt FROM assignments WHERE status = 'published'").fetchone()["cnt"]
 
-    if name:
-        completed = conn.execute(
-            "SELECT COUNT(DISTINCT assignment_id) as cnt FROM submissions WHERE student_name = ?",
-            [name],
-        ).fetchone()["cnt"]
-        avg = conn.execute(
-            """SELECT COALESCE(AVG(a.score), 0) as avg FROM answers a
-               JOIN submissions s ON a.submission_id = s.id
-               WHERE s.student_name = ? AND a.score > 0""",
-            [name],
-        ).fetchone()["avg"]
-    else:
-        completed = conn.execute(
-            "SELECT COUNT(DISTINCT assignment_id) as cnt FROM submissions"
-        ).fetchone()["cnt"]
-        avg = conn.execute("SELECT COALESCE(AVG(score), 0) as avg FROM answers WHERE score > 0").fetchone()["avg"]
+        if name:
+            completed = conn.execute(
+                "SELECT COUNT(DISTINCT assignment_id) as cnt FROM submissions WHERE student_name = ?",
+                [name],
+            ).fetchone()["cnt"]
+            avg = conn.execute(
+                """SELECT COALESCE(AVG(a.score), 0) as avg FROM answers a
+                   JOIN submissions s ON a.submission_id = s.id
+                   WHERE s.student_name = ? AND a.score > 0""",
+                [name],
+            ).fetchone()["avg"]
+        else:
+            completed = conn.execute(
+                "SELECT COUNT(DISTINCT assignment_id) as cnt FROM submissions"
+            ).fetchone()["cnt"]
+            avg = conn.execute("SELECT COALESCE(AVG(score), 0) as avg FROM answers WHERE score > 0").fetchone()["avg"]
 
     # Knowledge-graph-based weak point analysis
     mastery_map = get_student_mastery_map(name) if name else {}
@@ -59,7 +58,6 @@ def student_dashboard(name: str = ""):
         for kp in weak_points
     ]
 
-    conn.close()
     return StudentDashboard(
         total_assignments=total,
         completed_count=completed,
@@ -72,12 +70,11 @@ def student_dashboard(name: str = ""):
 @router.get("/knowledge-graph/{subject}")
 def knowledge_graph(subject: str):
     """Return the full knowledge point dependency tree for a subject."""
-    conn = get_db()
-    rows = conn.execute(
-        "SELECT id, name, parent_id, description FROM knowledge_points WHERE subject = ? ORDER BY name",
-        [subject],
-    ).fetchall()
-    conn.close()
+    with db_session(commit=False) as conn:
+        rows = conn.execute(
+            "SELECT id, name, parent_id, description FROM knowledge_points WHERE subject = ? ORDER BY name",
+            [subject],
+        ).fetchall()
     nodes = {r["id"]: {"id": r["id"], "name": r["name"], "parent_id": r["parent_id"], "description": r["description"], "children": []} for r in rows}
 
     roots = []
@@ -92,22 +89,20 @@ def knowledge_graph(subject: str):
 @router.get("/student/{name}/diagnosis")
 def student_diagnosis(name: str):
     """Deep diagnosis: root cause analysis for a student's weak points."""
-    conn = get_db()
-
-    # Get all wrong question IDs for this student
-    wrong_qids = [
-        r["question_id"] for r in conn.execute(
-            """SELECT a.question_id FROM answers a
-               JOIN submissions s ON a.submission_id = s.id
-               WHERE s.student_name = ? AND a.is_correct = 0""",
-            [name],
-        ).fetchall()
-    ]
+    with db_session(commit=False) as conn:
+        # Get all wrong question IDs for this student
+        wrong_qids = [
+            r["question_id"] for r in conn.execute(
+                """SELECT a.question_id FROM answers a
+                   JOIN submissions s ON a.submission_id = s.id
+                   WHERE s.student_name = ? AND a.is_correct = 0""",
+                [name],
+            ).fetchall()
+        ]
 
     root_causes = compute_root_causes(wrong_qids) if wrong_qids else []
     mastery_map = get_student_mastery_map(name)
 
-    conn.close()
     return {
         "student_name": name,
         "wrong_question_count": len(wrong_qids),
@@ -153,17 +148,16 @@ def teacher_style(teacher_name: str):
 @router.get("/review-queue")
 def review_queue():
     """Submissions that have low-confidence answers needing teacher review."""
-    conn = get_db()
-    rows = conn.execute(
-        """SELECT DISTINCT s.id, s.assignment_id, s.student_name, s.status, s.submitted_at,
-                  a_sub.title as assignment_title,
-                  COUNT(ans.id) as low_conf_count
-           FROM submissions s
-           JOIN answers ans ON ans.submission_id = s.id
-           JOIN assignments a_sub ON s.assignment_id = a_sub.id
-           WHERE ans.ai_confidence < 0.7 AND ans.teacher_override = 0
-           GROUP BY s.id
-           ORDER BY s.submitted_at DESC"""
-    ).fetchall()
-    conn.close()
+    with db_session(commit=False) as conn:
+        rows = conn.execute(
+            """SELECT DISTINCT s.id, s.assignment_id, s.student_name, s.status, s.submitted_at,
+                      a_sub.title as assignment_title,
+                      COUNT(ans.id) as low_conf_count
+               FROM submissions s
+               JOIN answers ans ON ans.submission_id = s.id
+               JOIN assignments a_sub ON s.assignment_id = a_sub.id
+               WHERE ans.ai_confidence < 0.7 AND ans.teacher_override = 0
+               GROUP BY s.id
+               ORDER BY s.submitted_at DESC"""
+        ).fetchall()
     return [dict(r) for r in rows]

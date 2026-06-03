@@ -6,7 +6,7 @@ import uuid
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from config import UPLOAD_DIR
-from database import get_db
+from database import db_session, get_db
 from models import AnswerUpdate, CorrectRequest
 from prompts.ocr import QUESTION_OCR_PROMPT, REFERENCE_ANSWER_OCR_PROMPT
 from services.ai_client import chat_with_image
@@ -19,23 +19,62 @@ from utils import extract_json, save_upload, upload_path
 router = APIRouter(prefix="/api", tags=["grading"])
 
 
-async def _ocr_and_update(conn, submission_id: int, image_url: str, answer_id: int | None = None):
-    """Run OCR on a single image and update the database."""
+async def _ocr_and_update(submission_id: int, image_url: str, answer_id: int | None = None):
+    """Run OCR on a single image and update the database.
+
+    Opens its own SQLite connection so parallel OCR tasks don't contend on a
+    shared connection during ``asyncio.gather``.
+
+    - Per-question image (answer_id given): write the first OCR result to that
+      answer. If OCR returns multiple questions we log a warning — the image
+      was meant to be one question only.
+    - Global image (answer_id None): OCR returns {question_number: text}.
+      Map question_number → real question_id via the assignment's question
+      order, since `question_id` is autoincrement and not equal to the
+      displayed question number.
+    """
+    import logging
+    logger = logging.getLogger("grading")
     img_path = upload_path(image_url, UPLOAD_DIR)
     try:
         results = await ocr_image(img_path)
     except Exception:
         return
-    if answer_id is not None:
-        text = list(results.values())[0] if results else ""
-        if text:
-            conn.execute("UPDATE answers SET student_answer = ? WHERE id = ?", [text, answer_id])
-    else:
-        for qid, text in results.items():
-            conn.execute(
-                "UPDATE answers SET student_answer = ? WHERE submission_id = ? AND question_id = ?",
-                [text, submission_id, qid],
-            )
+    if not results:
+        return
+    with db_session() as conn:
+        if answer_id is not None:
+            if len(results) > 1:
+                logger.warning(
+                    "Per-question image for answer %s returned %d questions; using first",
+                    answer_id, len(results),
+                )
+            text = next(iter(results.values()))
+            if text:
+                conn.execute(
+                    "UPDATE answers SET student_answer = ? WHERE id = ?",
+                    [text, answer_id],
+                )
+        else:
+            qrows = conn.execute(
+                "SELECT q.id FROM questions q "
+                "JOIN submissions s ON s.assignment_id = q.assignment_id "
+                "WHERE s.id = ? ORDER BY q.sort_order, q.id",
+                [submission_id],
+            ).fetchall()
+            qid_by_number = {i + 1: row["id"] for i, row in enumerate(qrows)}
+            for q_num, text in results.items():
+                real_qid = qid_by_number.get(int(q_num))
+                if real_qid is None:
+                    logger.warning(
+                        "OCR returned question_number %s but assignment only has %d",
+                        q_num, len(qrows),
+                    )
+                    continue
+                conn.execute(
+                    "UPDATE answers SET student_answer = ? WHERE submission_id = ? AND question_id = ?",
+                    [text, submission_id, real_qid],
+                )
 
 
 async def _grade_one_async(conn, submission_id: int) -> bool:
@@ -55,18 +94,18 @@ async def _grade_one_async(conn, submission_id: int) -> bool:
     # Run all OCR tasks in parallel
     ocr_tasks = []
     if sub["image_url"]:
-        ocr_tasks.append(_ocr_and_update(conn, submission_id, sub["image_url"]))
+        ocr_tasks.append(_ocr_and_update(submission_id, sub["image_url"]))
 
     per_q = conn.execute(
         "SELECT id, question_id, image_url FROM answers WHERE submission_id = ? AND image_url != ''",
         [submission_id],
     ).fetchall()
     for row in per_q:
-        ocr_tasks.append(_ocr_and_update(conn, submission_id, row["image_url"], row["id"]))
+        ocr_tasks.append(_ocr_and_update(submission_id, row["image_url"], row["id"]))
 
     if ocr_tasks:
         await asyncio.gather(*ocr_tasks)
-        conn.commit()
+        # OCR tasks wrote via their own connections; nothing to commit here.
 
     # Grade each answer in parallel
     answers = conn.execute(
@@ -103,12 +142,18 @@ async def _grade_one_async(conn, submission_id: int) -> bool:
     # Extract knowledge points for each question and update student mastery
     sub = conn.execute("SELECT student_name FROM submissions WHERE id = ?", [submission_id]).fetchone()
     student_name = sub["student_name"] if sub else ""
-    for ans in answers:
-        # Trigger knowledge point extraction (async, but we fire and forget for grading flow)
+    subject = conn.execute(
+        "SELECT subject FROM assignments WHERE id = (SELECT assignment_id FROM submissions WHERE id = ?)",
+        [submission_id],
+    ).fetchone()
+    subject = subject["subject"] or "" if subject else ""
+    for ans, result in zip(answers, results):
+        # Use the NEW AI-graded is_correct (from `result`), not the stale value in `ans`.
+        new_is_correct = bool(result.get("is_correct"))
         try:
             kps = await extract_knowledge_points(
                 ans["question_id"], ans["content"],
-                conn.execute("SELECT subject FROM assignments WHERE id = (SELECT assignment_id FROM submissions WHERE id = ?)", [submission_id]).fetchone()["subject"] or "",
+                subject,
                 ans["type"],
             )
             for kp in kps:
@@ -118,7 +163,7 @@ async def _grade_one_async(conn, submission_id: int) -> bool:
                         "SELECT id FROM knowledge_points WHERE name = ?", [kp_name]
                     ).fetchone()
                     if kp_id_row:
-                        update_student_mastery(student_name, kp_id_row["id"], bool(ans["is_correct"]))
+                        update_student_mastery(student_name, kp_id_row["id"], new_is_correct)
         except Exception:
             pass  # KP extraction failure should not block grading
 
@@ -284,12 +329,29 @@ async def ocr_reference_answer(image: UploadFile):
 
 # ── ocr status ────────────────────────────────────────────
 
-@router.post("/ocr/test")
-def ocr_test():
+@router.get("/ocr/health")
+async def ocr_health():
+    """Verify DashScope connectivity with a minimal ping."""
     from config import DASHSCOPE_BASE_URL, MODEL_NAME
-    return {
-        "service": "OCR via qwen3.6-flash",
-        "base_url": DASHSCOPE_BASE_URL,
-        "model": MODEL_NAME,
-        "status": "ready",
-    }
+    from services.ai_client import chat
+    try:
+        reply = await chat(
+            [{"role": "user", "content": "ping"}],
+            temperature=0.0,
+            max_tokens=8,
+        )
+        return {
+            "service": "OCR via DashScope chat",
+            "base_url": DASHSCOPE_BASE_URL,
+            "model": MODEL_NAME,
+            "status": "ok",
+            "ping_reply": reply[:80],
+        }
+    except Exception as e:
+        return {
+            "service": "OCR via DashScope chat",
+            "base_url": DASHSCOPE_BASE_URL,
+            "model": MODEL_NAME,
+            "status": "error",
+            "error": str(e)[:200],
+        }

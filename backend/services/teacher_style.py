@@ -18,7 +18,6 @@ def update_teacher_style(teacher_name: str, question_type: str, ai_score: int, t
         new_avg = old_avg + (bias - old_avg) / n
         old_std = row["bias_stddev"] or 0.0
         new_std = ((n - 1) * old_std ** 2 + (bias - old_avg) * (bias - new_avg)) / n
-        import math
         new_std = math.sqrt(max(new_std, 0))
         level = _classify_strictness(new_avg)
         conn.execute(

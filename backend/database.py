@@ -127,6 +127,51 @@ def get_db() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def db_session(commit: bool = True):
+    """Context manager that yields a SQLite connection and ensures cleanup.
+
+    Usage::
+
+        with db_session() as conn:
+            conn.execute(...)
+        # on exit: commit (if commit=True) then close. Rollback on exception.
+
+    For read-only paths, pass ``commit=False`` to skip the commit overhead.
+    """
+    conn = get_db()
+    try:
+        yield conn
+        if commit:
+            conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@contextmanager
+def db_session(commit: bool = True):
+    """Context manager that yields a SQLite connection and ensures cleanup.
+
+    Usage:
+        with db_session() as conn:
+            conn.execute(...)
+    # on exit: commit (if commit=True) then close. Rollback on exception.
+    """
+    conn = get_db()
+    try:
+        yield conn
+        if commit:
+            conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     conn = get_db()
     conn.executescript(SCHEMA)

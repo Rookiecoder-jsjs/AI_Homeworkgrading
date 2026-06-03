@@ -1,7 +1,8 @@
 # AI_Homeworkgrading — 架构文档
 
-> **当前版本：v0.2.2**
+> **当前版本：v0.2.3**
 > 前端纯内联 CSS-in-JS + Glass Morphism + Framer Motion + KaTeX。后端 FastAPI + SQLite + AsyncOpenAI 异步并行。
+> v0.2.3 新增:PDF 中文支持、pytest 27 用例、Docker 镜像 + compose、GitHub Actions CI、`db_session()` 上下文管理器、BFS N+1 消除。
 
 ## 1. 项目结构
 
@@ -9,6 +10,20 @@
 AI_Homeworkgrading/
 ├── README.md · PRD.md · ARCHITECTURE.md
 ├── .env.example
+├── docker-compose.yml              # 后端一键起；data/uploads/fonts 卷挂载
+├── .dockerignore
+├── pytest.ini                      # pytest + pytest-asyncio
+├── requirements-test.txt           # pytest 依赖
+├── .github/workflows/ci.yml        # 后端 ruff+pytest / 前端 lint+tsc+build
+├── tests/                          # 27 用例：utils / save_upload / grader
+│   ├── conftest.py
+│   ├── test_utils.py
+│   ├── test_save_upload.py
+│   └── test_grader.py
+├── scripts/
+│   ├── dev.js                      # 并行启动前后端
+│   ├── dev-api.js                  # 仅启动后端
+│   └── download_chinese_font.py    # 一键拉取 Noto Sans SC OTF
 ├── frontend/src/
 │   ├── main.tsx / App.tsx          # 入口 + 15 条路由
 │   ├── theme.ts                    # 设计 Token（含玻璃态色值）
@@ -17,9 +32,9 @@ AI_Homeworkgrading/
 │   ├── types/index.ts              # 12+ TS 接口
 │   ├── api/client.ts               # 30+ API 方法
 │   ├── motion/index.tsx            # 8 个动画组件（含 TiltCard）
-│   ├── components/                 # 13 个组件
-│   │   ├── CleanContent.tsx         # 🆕 内容清洗 + JSON 检测 + KaTeX
-│   │   ├── MathRenderer.tsx         # 🆕 LaTeX 公式 KaTeX 渲染
+│   ├── components/                 # 11 个组件
+│   │   ├── CleanContent.tsx         # 内容清洗 + JSON 检测 + KaTeX
+│   │   ├── MathRenderer.tsx         # LaTeX 公式 KaTeX 渲染
 │   │   ├── ConfidenceBadge.tsx      # 置信度三色徽章
 │   │   ├── SocraticFeedback.tsx     # 苏格拉底三级展开
 │   │   ├── GradingResult.tsx        # 单题批改卡片
@@ -36,26 +51,31 @@ AI_Homeworkgrading/
 │       ├── teacher/ (8 pages)      # 看板/作业/复核/队列/风格/分析
 │       └── student/ (6 pages)      # 看板/作业/提交/结果/订正/错题本
 └── backend/
-    ├── main.py                      # FastAPI 入口（7 个路由）
-    ├── config.py / database.py      # 配置 + 8 表 + PRAGMA 自动迁移
-    ├── models.py                    # 30+ Pydantic 模型
+    ├── Dockerfile                  # python:3.11-slim + /api/health healthcheck
+    ├── main.py                      # FastAPI 入口（6 个路由，v0.2.3）
+    ├── config.py / database.py      # 配置 + 9 表 + PRAGMA 自动迁移 + db_session()
+    ├── models.py                    # 30+ Pydantic 模型（含 CorrectItem）
     ├── utils.py                     # extract_json（括号计数状态机）+ 文件上传校验
-    ├── routers/                     # 7 个路由模块（30+ 端点）
+    ├── fonts/                       # 中文字体目录（gitignore；缺字时回退 Helvetica + WARN）
+    ├── routers/                     # 6 个路由模块（30+ 端点）
     │   ├── assignments.py           # 作业 CRUD + CSV 导出 + 编辑
     │   ├── submissions.py           # 提交管理（multipart + 逐题图片）
-    │   ├── grading.py               # 异步并行批改引擎
-    │   ├── dashboard.py             # 看板 + 知识图谱 + 班级分析 + 教师风格
-    │   ├── error_book.py            # 错题本（6 端点）
-    │   └── pdf_export.py            # 家长报告 PDF
+    │   ├── grading.py               # 异步并行批改引擎（OCR 任务独立连接）
+    │   ├── dashboard.py             # 看板 + 知识图谱 + 班级分析 + 教师风格（用 db_session）
+    │   ├── error_book.py            # 错题本（6 端点，用 db_session）
+    │   └── pdf_export.py            # 家长报告 PDF 路由
     ├── services/                    # 10 个服务
     │   ├── ai_client.py             # AsyncOpenAI（文本+多模态）
-    │   ├── ocr.py / grader.py / feedback.py
-    │   ├── knowledge_graph.py       # 知识点提取 + 依赖图 + BFS 根因
+    │   ├── ocr.py                   # DashScope 多模态 OCR
+    │   ├── grader.py                # 规则 + AI 批改（参考答案守卫）
+    │   ├── feedback.py              # 苏格拉底引导反馈
+    │   ├── knowledge_graph.py       # 知识点提取 + 依赖图 + BFS 根因（v0.2.3 消除 N+1）
     │   ├── teacher_style.py         # Welford 偏差追踪 + 修正
-    │   ├── error_book.py / question_generator.py
+    │   ├── error_book.py            # 错题本 service
+    │   ├── question_generator.py    # 举一反三变式题
     │   ├── class_analytics.py       # 热力图 + 趋势 + 对比
-    │   └── pdf_export.py            # fpdf2 A4 报告
-    └── prompts/                     # 6 套 Prompt 模板
+    │   └── pdf_export.py            # fpdf2 A4 报告（v0.2.3 嵌入 CJK 字体）
+    └── prompts/                     # 5 套 Prompt 模板
 ```
 
 ---
@@ -81,7 +101,7 @@ AI_Homeworkgrading/
 
 ---
 
-## 3. 数据库（8 张表）
+## 3. 数据库（9 张表）
 
 | 表 | 关键字段 | 用途 |
 |----|---------|------|
@@ -113,7 +133,8 @@ AI_Homeworkgrading/
 | PUT | `/api/answers/{id}/override` | 教师覆写（风格追踪） |
 | POST | `/api/submissions/{id}/correct` | 学生订正 |
 | POST | `/api/ocr/question` | 题目图片 OCR |
-| POST | `/api/ocr/reference-answer` | 🆕 参考答案图片 OCR |
+| POST | `/api/ocr/reference-answer` | 参考答案图片 OCR |
+| GET  | `/api/ocr/health` | v0.2.3 真实 ping DashScope，返回状态与截断回复 |
 
 ### 看板 & 分析
 | GET | `/api/dashboard/teacher\|student` | 看板统计 |
@@ -164,14 +185,66 @@ AI_Homeworkgrading/
 - 批量提交并行：`asyncio.gather(*sub_tasks)`
 - N×30s 串行 → ~30s 总耗时
 
+### db_session() 上下文管理器（v0.2.3）
+`database.py` 新增 `@contextmanager db_session(commit=True)`，封装 `get_db() + commit/rollback/close`。消除之前 `get_db() + 手写 close()` 容易漏关连接、或异常路径不 rollback 的隐患。`dashboard.py` / `error_book.py` 已切换；`_ocr_and_update` 内部独立打开连接，避免 `asyncio.gather` 中多个 OCR 任务争抢同一 SQLite 连接导致的锁竞争。
+
+### BFS 根因追溯消除 N+1（v0.2.3）
+`compute_root_causes()` 之前对每个 BFS 访问到的 KP 节点都执行一次 `SELECT id, name, parent_id FROM knowledge_points WHERE id = ?`。改为：先用一次查询把全部 KP 拉到内存（`kp_info: {id: (name, parent_id)}`），再在 Python 中完成 BFS。复杂度从 O(visited × 1 查询) 降到 O(2 查询)。`knowledge_points` 表规模按课程知识点数量级（百级），无界增长风险。
+
+### PDF 中文渲染（v0.2.3）
+`fpdf2` 内置 `Helvetica` 是 Latin-1，中文会被 `errors="replace"` 替换成 `?`。`services/pdf_export.py` 改为探测 `backend/fonts/` 下的 `NotoSansSC-{Regular.otf,Regular.ttf,CJKsc-Regular.otf,SourceHanSansSC-Regular.otf}` 之一，命中则 `pdf.add_font(family, fname=path, uni=True)` 嵌入并全文走 CJK 字体；未命中时记录 WARNING 并回退到 helvetica（家长报告里的中文会显示成 `?`，但不阻塞导出）。一键拉取脚本：`python scripts/download_chinese_font.py`，下载到 `backend/fonts/NotoSansSC-Regular.otf`。字体二进制被 `.gitignore` 排除。
+
 ---
 
 ## 6. 启动
 
+### 本地开发
 ```bash
 pip install -r backend/requirements.txt
 cd frontend && npm install
-cd frontend && npm run dev   # :5173 + :8000
+cp .env.example .env       # 设置 DASHSCOPE_API_KEY
+python scripts/download_chinese_font.py   # 可选：让 PDF 中文正常
+cd frontend && npm run dev  # :5173 (web) + :8000 (api via concurrently)
 ```
 
-> **文档版本：** v0.2.2 | **更新日期：** 2026-05-26
+### Docker
+```bash
+cp .env.example .env
+docker compose up --build  # 后端 :8000
+```
+详见 `backend/Dockerfile`（`python:3.11-slim` + `/api/health` 健康检查）与 `docker-compose.yml`（`./backend/{data,uploads,fonts}` 三个卷挂载，SQLite + 上传图片 + 字体持久化）。前端仍用 `npm run dev` 本地起，便于热更新。
+
+### 测试
+```bash
+pip install -r backend/requirements.txt -r requirements-test.txt
+pytest                     # 27 用例
+```
+CI 在 `.github/workflows/ci.yml`：后端 ruff + pytest，前端 lint + tsc + build。
+
+---
+
+## 7. 变更记录
+
+### v0.2.3 — 基础设施与质量
+**Bug 修复**
+- 全图 OCR 结果按 `question_number` 误写为 `question_id`：改为用 `sort_order` 映射回真实主键；per-question image 多结果时打 WARNING 后取首条
+- 掌握度更新使用 SELECT 旧值（常为 `NULL`）：改为并行结果 `result["is_correct"]`
+- `/api/ocr/test` 硬编码 `ready`：改为 `/api/ocr/health` 真实 ping DashScope
+
+**PDF 中文**：注册 Noto Sans SC TTF/OTF；字体下载脚本 `scripts/download_chinese_font.py`；`.gitignore` 排除二进制
+
+**工程化**：`backend/Dockerfile` + `docker-compose.yml` + `.dockerignore`；`.github/workflows/ci.yml`（Python 3.11 + Node 20，含 cache）；`pytest.ini` + `tests/`（27 用例）
+
+**架构优化**
+- `db_session()` 上下文管理器；`_ocr_and_update` 改用独立连接，消除 `asyncio.gather` 共享连接锁竞争
+- `compute_root_causes` N+1 → 2 次查询 + 内存 BFS
+
+**代码卫生**：`grader.py` / `teacher_style.py` 顶部 import；`CorrectRequest.answers: list` → `list[CorrectItem]`；删除 `GradingStyle.tsx` 重复 `TYPE_LABELS`；删除 `SubmitPage.tsx` 后端未用的 `has_image` 字段
+
+**文档**：版本号、6 个 router / 11 组件 / 9 表 / 5 prompt 等数字全部对齐代码
+
+### v0.2.2 — 批改精准化
+- 参考答案锚定批改 + 条件判分 + 答案图片 OCR；CleanContent / MathRenderer 内容清洗层
+- 详见 README v0.2.2 章节
+
+> **文档版本：** v0.2.3 | **更新日期：** 2026-06-03

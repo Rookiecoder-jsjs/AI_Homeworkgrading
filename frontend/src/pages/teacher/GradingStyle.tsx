@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
 import StyleIndicator from '../../components/StyleIndicator';
+import { QUESTION_TYPE_LABEL } from '../../constants';
 import type { TeacherStyleReport } from '../../types';
 
 const TYPE_LABELS: Record<string, string> = {
-  choice: '选择题', true_false: '判断题', fill_blank: '填空题',
-  short_answer: '简答题', essay: '作文/证明题', '': '全部',
+  ...QUESTION_TYPE_LABEL,
+  '': '全部',
 };
 
 export default function GradingStylePage() {
