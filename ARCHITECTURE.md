@@ -1,8 +1,8 @@
 # AI_Homeworkgrading — 架构文档
 
-> **当前版本：v0.2.3**
+> **当前版本：v0.2.4**
 > 前端纯内联 CSS-in-JS + Glass Morphism + Framer Motion + KaTeX。后端 FastAPI + SQLite + AsyncOpenAI 异步并行。
-> v0.2.3 新增:PDF 中文支持、pytest 27 用例、Docker 镜像 + compose、GitHub Actions CI、`db_session()` 上下文管理器、BFS N+1 消除。
+> v0.2.4 新增:根目录 `npm run dev` 一行启动、后端端口 8000→8001→... 鲁棒 fallback、共享 `scripts/lib/ports.js`、5 个 v0.2.3 漏修的 module-level import bug 真落地、仓库瘦身(移除 tests/ + pytest.ini + requirements-test.txt)。
 
 ## 1. 项目结构
 
@@ -12,17 +12,11 @@ AI_Homeworkgrading/
 ├── .env.example
 ├── docker-compose.yml              # 后端一键起；data/uploads/fonts 卷挂载
 ├── .dockerignore
-├── pytest.ini                      # pytest + pytest-asyncio
-├── requirements-test.txt           # pytest 依赖
-├── .github/workflows/ci.yml        # 后端 ruff+pytest / 前端 lint+tsc+build
-├── tests/                          # 27 用例：utils / save_upload / grader
-│   ├── conftest.py
-│   ├── test_utils.py
-│   ├── test_save_upload.py
-│   └── test_grader.py
+├── .github/workflows/ci.yml        # 后端 ruff / 前端 lint+tsc+build
 ├── scripts/
-│   ├── dev.js                      # 并行启动前后端
-│   ├── dev-api.js                  # 仅启动后端
+│   ├── lib/ports.js                # 共享 findFreePort(start,end) 端口扫描
+│   ├── dev.js                      # 并行启动前后端（端口鲁棒，TOCTOU retry）
+│   ├── dev-api.js                  # 仅启动后端（端口鲁棒）
 │   └── download_chinese_font.py    # 一键拉取 Noto Sans SC OTF
 ├── frontend/src/
 │   ├── main.tsx / App.tsx          # 入口 + 15 条路由
@@ -52,7 +46,7 @@ AI_Homeworkgrading/
 │       └── student/ (6 pages)      # 看板/作业/提交/结果/订正/错题本
 └── backend/
     ├── Dockerfile                  # python:3.11-slim + /api/health healthcheck
-    ├── main.py                      # FastAPI 入口（6 个路由，v0.2.3）
+    ├── main.py                      # FastAPI 入口（6 个路由，v0.2.4）
     ├── config.py / database.py      # 配置 + 9 表 + PRAGMA 自动迁移 + db_session()
     ├── models.py                    # 30+ Pydantic 模型（含 CorrectItem）
     ├── utils.py                     # extract_json（括号计数状态机）+ 文件上传校验
@@ -214,16 +208,33 @@ docker compose up --build  # 后端 :8000
 ```
 详见 `backend/Dockerfile`（`python:3.11-slim` + `/api/health` 健康检查）与 `docker-compose.yml`（`./backend/{data,uploads,fonts}` 三个卷挂载，SQLite + 上传图片 + 字体持久化）。前端仍用 `npm run dev` 本地起，便于热更新。
 
-### 测试
-```bash
-pip install -r backend/requirements.txt -r requirements-test.txt
-pytest                     # 27 用例
-```
-CI 在 `.github/workflows/ci.yml`：后端 ruff + pytest，前端 lint + tsc + build。
+### 端口鲁棒
+- `scripts/lib/ports.js` 导出 `findFreePort(start, end)` 在 `[start, end]` 范围扫,默认 8000-8099
+- `dev.js` / `dev-api.js` 的 `startApi` 在 `[API_PORT_START, API_PORT_END]` 内循环,单次 spawn uvicorn 后等 2.5s 早退事件,若 bind 失败则换下一个端口重试,最多 3 次
+- 前端通过 `VITE_API_PORT` 环境变量跟着后端实际端口走,无需改任何配置
+- 范围起点可通过 `API_PORT=9000 npm run dev` 覆盖
 
 ---
 
 ## 7. 变更记录
+
+### v0.2.4 — 启动体验与启动稳健性
+**启动**
+- 根目录 `package.json` 加 `setup` / `dev` / `dev:api` / `dev:web` 脚本,`npm run dev` 前后端并行起
+- `scripts/lib/ports.js` 抽 `findFreePort(start, end)` 共享端口扫描,默认范围 8000-8099
+- `dev.js` `startApi()` 包裹 retry:uvicorn 启动 2.5s 内早退则换下一个端口,最多 3 次
+- 日志显式标注 fallback:`API → http://localhost:8001 (8000 busy)`
+
+**Bug 修复**(v0.2.3 章节声称但未真正落地)
+- `backend/database.py` 缺 `from contextlib import contextmanager` —— `db_session` 在模块加载时 NameError,FastAPI 进程无法启动
+- `backend/services/grader.py` 缺 `import logging` —— AI 主观题返回非 JSON 时 `logger.warning` NameError
+- `backend/services/teacher_style.py` 缺 `import math` —— 任何一次教师覆写 `math.sqrt` NameError
+- `database.py` 重复定义 `db_session`,删冗余
+
+**仓库瘦身**
+- 移除 `tests/` 目录(4 个历史 pytest 用例 + conftest + 本次新增的 1 个 import 回归用例)
+- 移除 `pytest.ini` / `requirements-test.txt`(孤立配置)
+- CI 移除 pytest 步骤 + requirements-test.txt 安装,保留 ruff / 前端 lint+tsc+build
 
 ### v0.2.3 — 基础设施与质量
 **Bug 修复**
@@ -247,4 +258,4 @@ CI 在 `.github/workflows/ci.yml`：后端 ruff + pytest，前端 lint + tsc + b
 - 参考答案锚定批改 + 条件判分 + 答案图片 OCR；CleanContent / MathRenderer 内容清洗层
 - 详见 README v0.2.2 章节
 
-> **文档版本：** v0.2.3 | **更新日期：** 2026-06-03
+> **文档版本：** v0.2.4 | **更新日期：** 2026-06-04

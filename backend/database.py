@@ -1,4 +1,6 @@
 import sqlite3
+from contextlib import contextmanager
+
 from config import DATABASE_PATH
 
 SCHEMA = """
@@ -138,27 +140,6 @@ def db_session(commit: bool = True):
         # on exit: commit (if commit=True) then close. Rollback on exception.
 
     For read-only paths, pass ``commit=False`` to skip the commit overhead.
-    """
-    conn = get_db()
-    try:
-        yield conn
-        if commit:
-            conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-
-@contextmanager
-def db_session(commit: bool = True):
-    """Context manager that yields a SQLite connection and ensures cleanup.
-
-    Usage:
-        with db_session() as conn:
-            conn.execute(...)
-    # on exit: commit (if commit=True) then close. Rollback on exception.
     """
     conn = get_db()
     try:

@@ -6,7 +6,7 @@ from database import init_db
 from config import UPLOAD_DIR
 from routers import assignments, dashboard, error_book, grading, pdf_export, submissions
 
-app = FastAPI(title="AI 作业批改系统", version="0.2.2")
+app = FastAPI(title="AI 作业批改系统", version="0.2.4")
 
 app.add_middleware(
     CORSMiddleware,

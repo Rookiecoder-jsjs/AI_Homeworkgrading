@@ -1,6 +1,6 @@
 # AI_Homeworkgrading
 
-> **v0.2.3** · AI 驱动的 K12 智能作业批改平台
+> **v0.2.4** · AI 驱动的 K12 智能作业批改平台
 
 基于 **qwen3.6-flash** 的智能批改系统，从布置到订正一条龙搞定。客观题秒出分，主观题 AI 点评，苏格拉底式引导让学生自己"悟"出来。
 
@@ -62,9 +62,8 @@
 | 数据库 | SQLite (WAL) | 零配置，9 张表 + 列级自动迁移 |
 | AI | qwen3.6-flash + AsyncOpenAI | 多模态，低成本，中文强 |
 | PDF | fpdf2 + TTF/OTF | 中文 PDF 渲染（Noto Sans SC） |
-| 测试 | pytest + pytest-asyncio | 27 用例覆盖 extract_json / save_upload / grader |
 | 部署 | Docker + docker-compose | 后端一键起，data/uploads/fonts 卷挂载 |
-| CI | GitHub Actions | 后端 ruff+pytest，前端 lint+tsc+build |
+| CI | GitHub Actions | 后端 ruff，前端 lint+tsc+build |
 
 ---
 
@@ -77,12 +76,10 @@ AI_Homeworkgrading/
 ├── 🏛️ ARCHITECTURE.md
 ├── 🐳 docker-compose.yml       # 后端一键起，卷挂载 data/uploads/fonts
 ├── 🐳 .dockerignore
-├── ⚙️  pytest.ini              # pytest + pytest-asyncio 配置
-├── 🧪 tests/                   # 27 用例：utils / save_upload / grader
-├── 🚀 .github/workflows/ci.yml # 后端 ruff+pytest / 前端 lint+tsc+build
+├── 🚀 .github/workflows/ci.yml # 后端 ruff / 前端 lint+tsc+build
 ├── backend/
 │   ├── Dockerfile              # python:3.11-slim + healthcheck
-│   ├── main.py                 # FastAPI 入口（6 个路由模块，v0.2.3）
+│   ├── main.py                 # FastAPI 入口（6 个路由模块，v0.2.4）
 │   ├── config.py / database.py # 配置 + SQLite 9 表 + 自动迁移 + db_session()
 │   ├── models.py               # 30+ Pydantic 模型
 │   ├── utils.py                # extract_json（括号计数状态机）+ 文件上传校验
@@ -91,8 +88,9 @@ AI_Homeworkgrading/
 │   ├── services/               # 10 个服务（ai_client/ocr/grader/feedback/knowledge_graph/teacher_style/error_book/question_generator/class_analytics/pdf_export）
 │   └── prompts/                # 5 套 Prompt
 ├── scripts/
-│   ├── dev.js                  # 并行启动前后端
-│   ├── dev-api.js              # 仅启动后端
+│   ├── lib/ports.js            # 共享 findFreePort(start,end) 端口扫描
+│   ├── dev.js                  # 并行启动前后端（端口鲁棒）
+│   ├── dev-api.js              # 仅启动后端（端口鲁棒）
 │   └── download_chinese_font.py # 一键拉取 Noto Sans SC OTF
 ├── frontend/src/
 │   ├── api/client.ts           # 30+ API 方法
@@ -105,14 +103,38 @@ AI_Homeworkgrading/
 │   ├── motion/index.tsx        # 8 个动画组件（含 TiltCard）
 │   ├── theme.ts                # 设计 Token + 玻璃态色值
 │   └── pages/                  # 15 个页面（teacher 8 + student 6 + home）
-└── requirements-test.txt       # pytest 依赖（独立于主 requirements）
 ```
 
 ---
 
 ## 🚀 快速开始
 
-### 方式 A:本地开发(默认)
+### 方式 A:根目录一行命令启动(推荐)
+
+```bash
+# 1. 装依赖(后端 Python + 前端 Node,一次到位)
+npm run setup
+
+# 2. 配置 API Key
+cp .env.example .env
+# 编辑 .env → DASHSCOPE_API_KEY=你的key
+
+# 3. (可选) 拉取中文字体以让 PDF 报告正常显示中文
+python scripts/download_chinese_font.py
+
+# 4. 从项目根目录直接起,前后端并行(后端 :8000 + 前端 :5173,端口占用时自动顺延)
+npm run dev
+# 浏览器打开 http://localhost:5173
+```
+
+部分启动:
+
+```bash
+npm run dev:api  # 只起后端 :8000
+npm run dev:web  # 只起前端 :5173
+```
+
+### 方式 B:本地开发(手工)
 
 ```bash
 # 1. 安装依赖
@@ -131,41 +153,40 @@ cd frontend && npm run dev
 # 浏览器打开 http://localhost:5173
 ```
 
-### 方式 B:Docker
+### 方式 C:Docker
 
 ```bash
 cp .env.example .env  # 设置 DASHSCOPE_API_KEY
 docker compose up --build
-# 后端监听 http://localhost:8000
+# 后端监听 http://localhost:8000(端口被占时自动顺延)
 ```
 
-### 方式 C:跑测试
-
-```bash
-pip install -r backend/requirements.txt -r requirements-test.txt
-pytest                     # 27 用例，应全部通过
-```
+> **端口鲁棒性**:`npm run dev` / `dev:api` 默认从 8000 起,被占则按 `8000 → 8001 → 8002 → ...` 顺延,直到 8099 抛错。范围可通过 `API_PORT` 环境变量起点,例:`API_PORT=9000 npm run dev`。
 
 ## 🐳 Docker
 
 `docker-compose.yml` 仅跑后端,`./backend/data` / `./backend/uploads` / `./backend/fonts` 挂载为卷,保证 SQLite + 上传图片 + 字体持久化。镜像基于 `python:3.11-slim`,内置 `/api/health` 健康检查。前端仍用 `npm run dev` 本地起(便于热更新)。
 
-## 🧪 测试
+---
 
-```
-collected 27 items
-tests\test_grader.py .......                                             [ 25%]
-tests\test_save_upload.py ....                                           [ 40%]
-tests\test_utils.py ................                                     [100%]
-============================= 27 passed in ~5s ==============================
-```
+## 🆕 v0.2.4 更新(启动体验与启动稳健性)
 
-覆盖范围:
-- `utils.extract_json` — 14+ 边界用例(code fence / 字符串内花括号 / 转义 / 尾部逗号 / 集合符号前置 / 失败兜底)
-- `utils.save_upload` — 大小 / MIME 白名单 / 路径 roundtrip
-- `services.grader` — 选择 / 判断 / 填空精确匹配 / 参考答案守卫
+### 启动体验
+- **根目录一行命令**:`npm run dev` 前后端并行起(后端 :8000 + 前端 :5173);`npm run setup` 装完 Python + Node 全部依赖
+- **端口鲁棒**:8000 被占自动 fallback 到 8001/8002/...,TOCTOU 竞态包 retry 最多 3 次,日志显式标 `(8000 busy)`
+- **共享 lib**:`scripts/lib/ports.js` 抽出 `findFreePort(start, end)`,dev.js 与 dev-api.js 共用
+- **部分启动**:`npm run dev:api` / `npm run dev:web` 单独起任一端
 
-CI 会在 push / PR 时自动跑后端 `ruff + pytest` 与前端 `lint + tsc + build`。
+### Bug 修复(v0.2.3 声称但未真正落地)
+- `backend/database.py` 缺 `from contextlib import contextmanager` —— 应用启动即 `NameError`,FastAPI 进程根本起不来
+- `backend/services/grader.py` 缺 `import logging` —— AI 主观题返回非 JSON 时崩
+- `backend/services/teacher_style.py` 缺 `import math` —— 任何一次教师覆写崩
+- `database.py` 重复定义 `db_session`,删冗余
+
+### 仓库瘦身
+- 移除 `tests/` 目录、4 个历史测试文件 + 1 个本次回归测试,共 5 个 Python 文件
+- 移除 `pytest.ini` / `requirements-test.txt`(孤立配置)
+- CI 移除 pytest 步骤,保留 ruff / 前端 lint+tsc+build
 
 ---
 
