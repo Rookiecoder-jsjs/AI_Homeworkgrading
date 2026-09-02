@@ -1,5 +1,6 @@
-from database import db_session
 from fastapi import APIRouter, Query
+
+from database import db_session
 from services.error_book import (
     add_to_error_book,
     auto_add_wrong_answers,

@@ -2,8 +2,9 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from database import get_db
 from fpdf import FPDF
+
+from database import get_db
 
 logger = logging.getLogger("pdf_export")
 

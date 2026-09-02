@@ -3,6 +3,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
+
 from services.pdf_export import generate_student_report
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])

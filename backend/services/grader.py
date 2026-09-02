@@ -1,9 +1,8 @@
 import logging
 
 from prompts.grading import GRADING_SYSTEM_PROMPT, build_grading_prompt
-from utils import extract_json
-
 from services.ai_client import chat
+from utils import extract_json
 
 logger = logging.getLogger("grader")
 

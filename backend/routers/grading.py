@@ -5,9 +5,10 @@ import mimetypes
 import os
 from pathlib import Path
 
+from fastapi import APIRouter, HTTPException, UploadFile
+
 from config import UPLOAD_DIR
 from database import db_session, get_db
-from fastapi import APIRouter, HTTPException, UploadFile
 from models import AnswerUpdate, CorrectRequest
 from prompts.ocr import QUESTION_OCR_PROMPT, REFERENCE_ANSWER_OCR_PROMPT
 from services.ai_client import chat_with_image

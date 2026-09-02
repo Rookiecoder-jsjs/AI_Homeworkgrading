@@ -1,8 +1,7 @@
 
 from prompts.question_gen import VARIANT_GEN_PROMPT, build_variant_prompt
-from utils import extract_json
-
 from services.ai_client import chat
+from utils import extract_json
 
 
 async def generate_similar_question(

@@ -1,5 +1,6 @@
-from config import DASHSCOPE_API_KEY, DASHSCOPE_BASE_URL, MODEL_NAME
 from openai import AsyncOpenAI
+
+from config import DASHSCOPE_API_KEY, DASHSCOPE_BASE_URL, MODEL_NAME
 
 _client = AsyncOpenAI(
     api_key=DASHSCOPE_API_KEY,

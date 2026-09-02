@@ -4,9 +4,8 @@ import mimetypes
 from pathlib import Path
 
 from prompts.ocr import OCR_SYSTEM_PROMPT
-from utils import extract_json
-
 from services.ai_client import chat_with_image
+from utils import extract_json
 
 
 async def ocr_image(image_path: str) -> dict[int, str]:
