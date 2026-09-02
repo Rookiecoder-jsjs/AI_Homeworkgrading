@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../../api/client';
@@ -16,29 +16,45 @@ export default function SubmissionReviewPage() {
   const [autoApproving, setAutoApproving] = useState(false);
   const [showHighConf, setShowHighConf] = useState(false);
 
-  const load = () => { if (id) api.getSubmission(+id).then(setSub).catch(console.error); };
-  useEffect(load, [id]);
+  const load = useCallback(() => {
+    if (id) api.getSubmission(+id).then(setSub).catch(console.error);
+  }, [id]);
+  useEffect(() => { load(); }, [load]);
 
   const handleGrade = async () => {
     if (!id) return;
     setGrading(true);
-    await api.triggerGrading(+id);
-    setGrading(false);
-    load();
+    try {
+      await api.triggerGrading(+id);
+      load();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '请稍后重试';
+      alert('批改失败：' + message);
+    } finally {
+      setGrading(false);
+    }
   };
 
   const handleAutoApprove = async () => {
     if (!id || !sub) return;
     setAutoApproving(true);
-    // Batch approve all high-confidence answers
     const highConf = (sub.answers ?? []).filter(
       (a) => a.is_correct !== null && (a.ai_confidence ?? 0) > 0.9 && a.teacher_override === 0
     );
-    for (const a of highConf) {
-      await api.overrideAnswer(a.id, { is_correct: a.is_correct, score: a.score, teacher_comment: '' }).catch(() => {});
+    try {
+      const results = await Promise.allSettled(
+        highConf.map((a) => api.overrideAnswer(a.id, {
+          is_correct: a.is_correct,
+          score: a.score,
+          teacher_comment: '',
+        }))
+      );
+      const failed = results.filter((result) => result.status === 'rejected').length;
+      if (failed > 0) alert(`${failed} 道题确认失败，请重新打开后处理`);
+    } finally {
+      setAutoApproving(false);
+      load();
     }
-    setAutoApproving(false);
-    load();
   };
 
   if (!sub) return <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>加载中...</div>;
@@ -165,7 +181,10 @@ export default function SubmissionReviewPage() {
                         </div>
                       )}
                       {q && <CleanContent content={q.content} style={{ fontSize: 15, color: '#334155', lineHeight: 1.7, margin: '0 0 12px' }} />}
-                      <GradingResult answer={ans} questionType={q?.type}
+                      <GradingResult
+                        key={`${ans.id}:${ans.score}:${ans.teacher_comment}`}
+                        answer={ans}
+                        maxPoints={q?.points ?? 0}
                         onOverride={async (aid, correct, sc, comment) => {
                           await api.overrideAnswer(aid, { is_correct: correct, score: sc, teacher_comment: comment });
                           load();

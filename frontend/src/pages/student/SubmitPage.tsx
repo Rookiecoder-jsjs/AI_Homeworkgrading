@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { QUESTION_TYPE_LABEL } from '../../constants';
@@ -12,6 +12,15 @@ export default function SubmitPage() {
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [images, setImages] = useState<Record<number, { file: File; preview: string }>>({});
   const [submitting, setSubmitting] = useState(false);
+  const imagesRef = useRef(images);
+
+  useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
+
+  useEffect(() => () => {
+    Object.values(imagesRef.current).forEach((image) => URL.revokeObjectURL(image.preview));
+  }, []);
 
   useEffect(() => { if (id) api.getAssignment(+id).then(setAssignment).catch(console.error); }, [id]);
 
@@ -21,7 +30,11 @@ export default function SubmitPage() {
     input.onchange = () => {
       const file = input.files?.[0];
       if (!file) return;
-      setImages((prev) => ({ ...prev, [questionId]: { file, preview: URL.createObjectURL(file) } }));
+      const preview = URL.createObjectURL(file);
+      setImages((prev) => {
+        if (prev[questionId]) URL.revokeObjectURL(prev[questionId].preview);
+        return { ...prev, [questionId]: { file, preview } };
+      });
     };
     input.click();
   };
@@ -37,11 +50,20 @@ export default function SubmitPage() {
 
   const handleSubmit = async () => {
     if (!id) return;
+    if (!name.trim()) {
+      alert('请先在学生看板输入姓名');
+      nav('/student/dashboard');
+      return;
+    }
+    if (!assignment?.questions?.length) {
+      alert('当前作业没有可提交的题目');
+      return;
+    }
     setSubmitting(true);
     try {
       const form = new FormData();
       form.append('assignment_id', id);
-      form.append('student_name', name);
+      form.append('student_name', name.trim());
       for (const [qid, img] of Object.entries(images)) {
         form.append('question_images', img.file);
         form.append('question_image_ids', qid);
@@ -53,8 +75,12 @@ export default function SubmitPage() {
       form.append('answers_json', JSON.stringify(answerList));
       const result = await api.submitAssignment(form);
       nav(`/student/submissions/${result.id}`);
-    } catch (e: any) { alert('提交失败：' + e.message); }
-    setSubmitting(false);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '请稍后重试';
+      alert('提交失败：' + message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!assignment) return <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>加载中...</div>;
@@ -102,10 +128,14 @@ export default function SubmitPage() {
             </div>
 
             <div style={{ position: 'relative' }}>
+              <label htmlFor={`answer-${q.id}`} style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+                你的答案
+              </label>
               <textarea
+                id={`answer-${q.id}`}
                 rows={q.type === 'essay' ? 6 : 3}
                 value={answers[q.id] || ''}
-                onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
+                onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
                 placeholder="在此输入你的答案..."
                 style={{
                   width: '100%', padding: '12px 46px 12px 14px', borderRadius: 10,
@@ -114,7 +144,7 @@ export default function SubmitPage() {
                   transition: 'border-color 0.15s',
                 }}
               />
-              <button type="button" onClick={() => handleImagePick(q.id)} title="拍照上传此题" style={{
+              <button type="button" onClick={() => handleImagePick(q.id)} title="拍照上传此题" aria-label={`拍照上传第 ${i + 1} 题`} style={{
                 position: 'absolute', right: 10, bottom: 10,
                 width: 32, height: 32, borderRadius: 8,
                 border: `1px solid ${img ? '#c7d2fe' : '#e2e8f0'}`,
@@ -128,7 +158,7 @@ export default function SubmitPage() {
             {img && (
               <div style={{ marginTop: 10, display: 'inline-flex', position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                 <img src={img.preview} alt="题目照片" style={{ width: 120, height: 80, objectFit: 'cover', display: 'block' }} />
-                <button type="button" onClick={() => removeImage(q.id)} style={{
+                <button type="button" onClick={() => removeImage(q.id)} aria-label={`移除第 ${i + 1} 题的图片`} style={{
                   position: 'absolute', top: 3, right: 3, width: 18, height: 18,
                   borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)',
                   color: '#fff', fontSize: 10, cursor: 'pointer', display: 'flex',
@@ -140,7 +170,7 @@ export default function SubmitPage() {
         );
       })}
 
-      <button onClick={handleSubmit} disabled={submitting} style={{
+      <button type="button" onClick={handleSubmit} disabled={submitting} aria-busy={submitting} style={{
         width: '100%', padding: 15, borderRadius: 14, border: 'none',
         background: submitting ? '#a5b4fc' : '#4338ca', color: '#fff',
         fontSize: 15, fontWeight: 700, cursor: submitting ? 'default' : 'pointer',
@@ -152,4 +182,3 @@ export default function SubmitPage() {
     </div>
   );
 }
-

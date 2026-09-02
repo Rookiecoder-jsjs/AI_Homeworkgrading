@@ -1,7 +1,12 @@
-from fastapi import APIRouter, Query
-
 from database import db_session
-from services.error_book import add_to_error_book, auto_add_wrong_answers, get_error_book, get_error_book_stats, mark_as_reviewed
+from fastapi import APIRouter, Query
+from services.error_book import (
+    add_to_error_book,
+    auto_add_wrong_answers,
+    get_error_book,
+    get_error_book_stats,
+    mark_as_reviewed,
+)
 from services.question_generator import generate_similar_question
 
 router = APIRouter(prefix="/api/error-book", tags=["error-book"])

@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
-
-interface ClassOverview { class_name: string; student_count: number; unique_students: number; avg_score: number; completion_rate: number }
-interface HeatmapItem { knowledge_point_name: string; mastery_pct: number; total_students: number; weak_count: number; strong_count: number }
-interface TrendPoint { period_label: string; avg_score: number; submission_count: number; low_conf_pct: number }
+import type { ClassOverview, HeatmapItem, TrendPoint } from '../../types';
 
 export default function ClassAnalyticsPage() {
   const nav = useNavigate();
@@ -42,15 +39,16 @@ export default function ClassAnalyticsPage() {
       {/* Class overview cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14, marginBottom: 28 }}>
         {classes.map((c) => (
-          <div key={c.class_name} onClick={() => loadClass(c.class_name)} style={{
+          <button key={c.class_name} type="button" onClick={() => loadClass(c.class_name)} aria-pressed={selectedClass === c.class_name} style={{
             padding: 18, borderRadius: 14, background: '#fff',
             border: selectedClass === c.class_name ? '2px solid #4338ca' : '1px solid #e2e8f0',
             cursor: 'pointer', transition: 'all 0.15s',
+            textAlign: 'left', font: 'inherit', color: 'inherit',
           }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>{c.class_name}</div>
             <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>{c.unique_students || c.student_count} 名学生</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#4338ca' }}>{Math.round(c.avg_score)} <span style={{ fontSize: 12, color: '#94a3b8' }}>均分</span></div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -91,7 +89,7 @@ export default function ClassAnalyticsPage() {
                 📈 {selectedClass} 成绩趋势
               </h2>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 140, padding: '0 4px 24px', borderBottom: '1px solid #e2e8f0' }}>
-                {trends.reverse().map((t) => {
+                {trends.slice().reverse().map((t) => {
                   const maxScore = Math.max(...trends.map(x => x.avg_score), 1);
                   const h = Math.max(4, (t.avg_score / maxScore) * 100);
                   return (

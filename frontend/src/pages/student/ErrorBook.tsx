@@ -1,38 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
 import SimilarQuestionCard from '../../components/SimilarQuestionCard';
 import CleanContent from '../../components/CleanContent';
-
-interface ErrorEntry {
-  id: number;
-  student_name: string;
-  question_id: number;
-  question_content?: string;
-  question_type?: string;
-  reference_answer?: string;
-  wrong_answer: string;
-  subject: string;
-  added_at: string;
-  reviewed_count: number;
-  status: string;
-}
+import type { ErrorBookEntry, SimilarQuestion } from '../../types';
 
 export default function ErrorBookPage() {
   const nav = useNavigate();
   const name = localStorage.getItem('student_name') || '';
-  const [entries, setEntries] = useState<ErrorEntry[]>([]);
+  const [entries, setEntries] = useState<ErrorBookEntry[]>([]);
   const [subjectFilter, setSubjectFilter] = useState('');
   const [genLoading, setGenLoading] = useState<Record<number, boolean>>({});
-  const [similarQuestions, setSimilarQuestions] = useState<Record<number, any>>({});
+  const [similarQuestions, setSimilarQuestions] = useState<Record<number, SimilarQuestion>>({});
 
-  const load = () => {
+  const load = useCallback(() => {
     api.getErrorBook(name, subjectFilter)
       .then(setEntries)
       .catch(console.error);
-  };
+  }, [name, subjectFilter]);
 
-  useEffect(() => { if (name) load(); }, [name, subjectFilter]);
+  useEffect(() => { if (name) load(); }, [load, name]);
 
   const handleSync = async () => {
     await api.syncErrorBook(name);
@@ -46,8 +33,12 @@ export default function ErrorBookPage() {
       if (result.ok) {
         setSimilarQuestions((p) => ({ ...p, [entryId]: result.similar_question }));
       }
-    } catch (e: any) { alert('生成失败：' + e.message); }
-    setGenLoading((p) => ({ ...p, [entryId]: false }));
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '请稍后重试';
+      alert('生成失败：' + message);
+    } finally {
+      setGenLoading((p) => ({ ...p, [entryId]: false }));
+    }
   };
 
   return (

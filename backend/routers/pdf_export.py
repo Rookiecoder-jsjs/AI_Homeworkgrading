@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Query
-from fastapi.responses import StreamingResponse
 import io
+from urllib.parse import quote
 
+from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 from services.pdf_export import generate_student_report
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -14,7 +15,7 @@ def download_student_report(
     teacher_name: str = "",
 ):
     pdf_bytes = generate_student_report(student_name, class_name, teacher_name)
-    filename = f"Student_Report_{student_name}.pdf"
+    filename = quote(f"Student_Report_{student_name}.pdf", safe="")
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",

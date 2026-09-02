@@ -17,12 +17,18 @@ export default function CorrectPage() {
   const handleSubmit = async () => {
     if (!id) return;
     setSubmitting(true);
-    const answersList = (sub?.answers ?? [])
-      .filter(a => !a.is_correct)
-      .map(a => ({ question_id: a.question_id, student_answer: newAnswers[a.question_id] || '' }));
-    await api.submitCorrection(+id, answersList);
-    setSubmitting(false);
-    nav(`/student/submissions/${id}`);
+    try {
+      const answersList = (sub?.answers ?? [])
+        .filter(a => !a.is_correct)
+        .map(a => ({ question_id: a.question_id, student_answer: newAnswers[a.question_id] || '' }));
+      await api.submitCorrection(+id, answersList);
+      nav(`/student/submissions/${id}`);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '请稍后重试';
+      alert('订正失败：' + message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!sub) return <div style={{ padding: 24 }}>加载中...</div>;

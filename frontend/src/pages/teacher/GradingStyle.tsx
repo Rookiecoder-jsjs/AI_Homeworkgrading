@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
 import StyleIndicator from '../../components/StyleIndicator';
@@ -32,6 +32,8 @@ export default function GradingStylePage() {
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 28 }}>
         <input
+          id="teacher-name"
+          aria-label="教师姓名"
           placeholder="输入教师姓名"
           value={teacherName}
           onChange={(e) => setTeacherName(e.target.value)}

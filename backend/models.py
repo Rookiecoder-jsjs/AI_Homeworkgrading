@@ -1,20 +1,22 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+QuestionType = Literal["choice", "true_false", "fill_blank", "short_answer", "essay"]
 
 
 # ── Question ──────────────────────────────────────────────
 
 class QuestionCreate(BaseModel):
-    type: str  # choice / true_false / fill_blank / short_answer / essay
-    content: str
-    reference_answer: str = ""
-    rubric: str = ""
-    points: int = 1
-    sort_order: int = 0
-    image_url: str = ""
+    type: QuestionType
+    content: str = Field(min_length=1, max_length=20_000)
+    reference_answer: str = Field(default="", max_length=20_000)
+    rubric: str = Field(default="", max_length=20_000)
+    points: int = Field(default=1, ge=0, le=1_000)
+    sort_order: int = Field(default=0, ge=0)
+    image_url: str = Field(default="", max_length=500)
 
 
 class QuestionOut(QuestionCreate):
@@ -25,14 +27,14 @@ class QuestionOut(QuestionCreate):
 # ── Assignment ────────────────────────────────────────────
 
 class AssignmentCreate(BaseModel):
-    title: str
-    subject: str = ""
-    description: str = ""
-    teacher_name: str = ""
-    class_name: str = ""
-    due_date: str = ""
-    status: str = "draft"
-    questions: list[QuestionCreate] = []
+    title: str = Field(min_length=1, max_length=200)
+    subject: str = Field(default="", max_length=100)
+    description: str = Field(default="", max_length=20_000)
+    teacher_name: str = Field(default="", max_length=100)
+    class_name: str = Field(default="", max_length=100)
+    due_date: str = Field(default="", max_length=50)
+    status: Literal["draft", "published", "closed"] = "draft"
+    questions: list[QuestionCreate] = Field(default_factory=list)
 
 
 class AssignmentOut(BaseModel):
@@ -67,8 +69,8 @@ class AnswerOut(BaseModel):
     submission_id: int
     question_id: int
     student_answer: str
-    is_correct: Optional[bool] = None
-    ai_confidence: Optional[float] = None
+    is_correct: bool | None = None
+    ai_confidence: float | None = None
     ai_feedback: str = ""
     score: int = 0
     teacher_override: int = 0
@@ -82,19 +84,19 @@ class SubmissionDetail(SubmissionOut):
 
 
 class AnswerUpdate(BaseModel):
-    is_correct: Optional[bool] = None
-    score: Optional[int] = None
-    teacher_comment: Optional[str] = None
+    is_correct: bool | None = None
+    score: int | None = Field(default=None, ge=0, le=1_000)
+    teacher_comment: str | None = Field(default=None, max_length=5_000)
     teacher_override: int = 1
 
 
 class CorrectItem(BaseModel):
-    question_id: int
-    student_answer: str = ""
+    question_id: int = Field(gt=0)
+    student_answer: str = Field(default="", max_length=20_000)
 
 
 class CorrectRequest(BaseModel):
-    answers: list[CorrectItem]
+    answers: list[CorrectItem] = Field(min_length=1)
 
 
 # ── Dashboard ─────────────────────────────────────────────
@@ -121,15 +123,15 @@ class KnowledgePointOut(BaseModel):
     id: int
     name: str
     subject: str = ""
-    parent_id: Optional[int] = None
+    parent_id: int | None = None
     description: str = ""
 
 
 class KnowledgeGraphNode(BaseModel):
     id: int
     name: str
-    children: list["KnowledgeGraphNode"] = []
-    mastery_score: Optional[float] = None
+    children: list[KnowledgeGraphNode] = []
+    mastery_score: float | None = None
 
 
 class WeakPointDiagnosis(BaseModel):

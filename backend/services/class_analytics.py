@@ -7,8 +7,9 @@ def get_class_stats(teacher_name: str = "") -> list[dict]:
     query = """SELECT a.class_name,
                       COUNT(DISTINCT s.id) as student_count,
                       COUNT(DISTINCT s.student_name) as unique_students,
-                      COALESCE(AVG(ans.score), 0) as avg_score,
-                      CAST(SUM(CASE WHEN s.status IN ('graded','reviewed','corrected') THEN 1 ELSE 0 END) AS REAL) / MAX(1, COUNT(*)) as completion_rate
+                      COALESCE(AVG(CASE WHEN ans.is_correct IS NOT NULL THEN ans.score END), 0) as avg_score,
+                      CAST(COUNT(DISTINCT CASE WHEN s.status IN ('graded','reviewed','corrected') THEN s.id END) AS REAL)
+                        / NULLIF(COUNT(DISTINCT s.id), 0) as completion_rate
                FROM assignments a
                LEFT JOIN submissions s ON s.assignment_id = a.id
                LEFT JOIN answers ans ON ans.submission_id = s.id
@@ -20,7 +21,7 @@ def get_class_stats(teacher_name: str = "") -> list[dict]:
     query += " GROUP BY a.class_name ORDER BY avg_score DESC"
     rows = conn.execute(query, params).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    return [{**dict(r), "completion_rate": round(r["completion_rate"] or 0, 3)} for r in rows]
 
 
 def get_knowledge_heatmap(class_name: str) -> list[dict]:
@@ -29,14 +30,18 @@ def get_knowledge_heatmap(class_name: str) -> list[dict]:
 
     # Try student_mastery first
     rows = conn.execute(
-        """SELECT kp.name, AVG(sm.mastery_score) as avg_mastery, COUNT(*) as student_count,
+        """SELECT kp.name, AVG(sm.mastery_score) as avg_mastery,
+                  COUNT(DISTINCT sm.student_name) as student_count,
                   SUM(CASE WHEN sm.mastery_score < 0.4 THEN 1 ELSE 0 END) as weak_count,
                   SUM(CASE WHEN sm.mastery_score > 0.7 THEN 1 ELSE 0 END) as strong_count
            FROM student_mastery sm
            JOIN knowledge_points kp ON sm.knowledge_point_id = kp.id
-           JOIN submissions s ON sm.student_name = s.student_name
-           JOIN assignments a ON s.assignment_id = a.id
-           WHERE a.class_name = ?
+           WHERE EXISTS (
+               SELECT 1
+               FROM submissions s
+               JOIN assignments a ON s.assignment_id = a.id
+               WHERE s.student_name = sm.student_name AND a.class_name = ?
+           )
            GROUP BY kp.id, kp.name
            ORDER BY avg_mastery ASC
            LIMIT 20""",
@@ -50,7 +55,10 @@ def get_knowledge_heatmap(class_name: str) -> list[dict]:
 
     # Fallback: compute from answers
     rows = conn.execute(
-        """SELECT kp.name, AVG(CASE WHEN ans.is_correct = 1 THEN 1.0 ELSE 0.0 END) as avg_correct, COUNT(*) as total_answers
+        """SELECT kp.name,
+                  AVG(CASE WHEN ans.is_correct IS NOT NULL THEN CASE WHEN ans.is_correct = 1 THEN 1.0 ELSE 0.0 END END) as avg_correct,
+                  COUNT(DISTINCT s.student_name) as total_students,
+                  COUNT(*) as total_answers
            FROM answers ans
            JOIN questions q ON ans.question_id = q.id
            LEFT JOIN question_knowledge_points qkp ON q.id = qkp.question_id
@@ -64,8 +72,8 @@ def get_knowledge_heatmap(class_name: str) -> list[dict]:
         [class_name],
     ).fetchall()
     conn.close()
-    return [{"knowledge_point_name": r["name"], "mastery_pct": round(r["avg_correct"], 2),
-             "total_students": 0, "weak_count": 0, "strong_count": 0} for r in rows]
+    return [{"knowledge_point_name": r["name"], "mastery_pct": round(r["avg_correct"] or 0, 2),
+             "total_students": r["total_students"], "weak_count": 0, "strong_count": 0} for r in rows]
 
 
 def get_trends(class_name: str, weeks: int = 8) -> list[dict]:
@@ -73,9 +81,10 @@ def get_trends(class_name: str, weeks: int = 8) -> list[dict]:
     conn = get_db()
     rows = conn.execute(
         """SELECT strftime('%Y-%W', s.submitted_at) as week_label,
-                  COUNT(*) as submission_count,
-                  COALESCE(AVG(ans.score), 0) as avg_score,
-                  CAST(SUM(CASE WHEN ans.ai_confidence < 0.7 AND ans.teacher_override = 0 THEN 1 ELSE 0 END) AS REAL) / MAX(1, COUNT(*)) as low_conf_rate
+                  COUNT(DISTINCT s.id) as submission_count,
+                  COALESCE(AVG(CASE WHEN ans.is_correct IS NOT NULL THEN ans.score END), 0) as avg_score,
+                  CAST(SUM(CASE WHEN ans.is_correct IS NOT NULL AND ans.ai_confidence < 0.7 AND ans.teacher_override = 0 THEN 1 ELSE 0 END) AS REAL)
+                    / NULLIF(SUM(CASE WHEN ans.is_correct IS NOT NULL THEN 1 ELSE 0 END), 0) as low_conf_rate
            FROM submissions s
            JOIN answers ans ON ans.submission_id = s.id
            JOIN assignments a ON s.assignment_id = a.id
@@ -86,14 +95,13 @@ def get_trends(class_name: str, weeks: int = 8) -> list[dict]:
         [class_name, weeks],
     ).fetchall()
     conn.close()
-    return [{"period_label": r["week_label"], "avg_score": round(r["avg_score"], 1),
-             "submission_count": r["submission_count"], "low_conf_pct": round(r["low_conf_rate"], 2)} for r in rows]
+    return [{"period_label": r["week_label"], "avg_score": round(r["avg_score"] or 0, 1),
+             "submission_count": r["submission_count"], "low_conf_pct": round(r["low_conf_rate"] or 0, 2)} for r in rows]
 
 
 def compare_classes(class_a: str, class_b: str) -> dict:
     """Side-by-side class comparison."""
-    stats_a = get_class_stats()
-    stats_b = get_class_stats()
-    class_a_data = next((s for s in stats_a if s["class_name"] == class_a), None)
-    class_b_data = next((s for s in stats_b if s["class_name"] == class_b), None)
+    stats = get_class_stats()
+    class_a_data = next((s for s in stats if s["class_name"] == class_a), None)
+    class_b_data = next((s for s in stats if s["class_name"] == class_b), None)
     return {"class_a": class_a_data or {}, "class_b": class_b_data or {}}

@@ -6,24 +6,25 @@ import { StaggerContainer, StaggerItem, TiltCard } from '../../motion';
 import { theme } from '../../theme';
 import type { TeacherDashboard } from '../../types';
 
-const smooth = [0.16, 1, 0.3, 1];
+const smooth = [0.16, 1, 0.3, 1] as const;
 
 function CountUp({ target, duration = 800 }: { target: number | string; duration?: number }) {
   const [val, setVal] = useState(0);
   const frameRef = useRef<number>(0);
+  const numericTarget = typeof target === 'number' ? target : null;
 
   useEffect(() => {
-    if (typeof target === 'string') { setVal(0); return; }
+    if (numericTarget === null) return;
     const start = performance.now();
     const animate = (now: number) => {
       const p = Math.min((now - start) / duration, 1);
       const eased = 1 - Math.pow(1 - p, 3);
-      setVal(Math.round(eased * target));
+      setVal(Math.round(eased * numericTarget));
       if (p < 1) frameRef.current = requestAnimationFrame(animate);
     };
     frameRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frameRef.current);
-  }, [target, duration]);
+  }, [numericTarget, duration]);
 
   if (typeof target === 'string') return <>{target}</>;
   return <>{val}</>;
@@ -101,12 +102,13 @@ export default function TeacherDashboardPage() {
         {cards.map((c) => (
           <StaggerItem key={c.label}>
             <TiltCard>
-              <motion.div
+              <motion.button
+                type="button"
                 onClick={() => nav(c.to)}
                 whileHover={{ y: -4, boxShadow: `0 16px 48px ${c.color}18` }}
                 whileTap={{ scale: 0.98 }}
                 transition={{ type: 'spring', stiffness: 280, damping: 24 }}
-                style={{ padding: '22px 20px', borderRadius: 20, ...glassCard, cursor: 'pointer' }}
+                style={{ padding: '22px 20px', borderRadius: 20, ...glassCard, cursor: 'pointer', width: '100%', textAlign: 'left', font: 'inherit' }}
                 onMouseEnter={(e) => { e.currentTarget.style.borderColor = c.color + '40'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(226,232,240,0.8)'; }}
               >
@@ -132,7 +134,7 @@ export default function TeacherDashboardPage() {
                 <div style={{ marginTop: 14, fontSize: 11, color: c.color, opacity: 0.45, fontWeight: 500 }}>
                   查看详情 →
                 </div>
-              </motion.div>
+              </motion.button>
             </TiltCard>
           </StaggerItem>
         ))}

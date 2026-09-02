@@ -23,6 +23,19 @@ export interface Assignment {
   questions?: Question[];
 }
 
+export type QuestionPayload = Omit<Question, 'id' | 'assignment_id'>;
+
+export interface AssignmentPayload {
+  title: string;
+  subject: string;
+  description: string;
+  teacher_name: string;
+  class_name: string;
+  due_date: string;
+  status: 'draft' | 'published' | 'closed';
+  questions: QuestionPayload[];
+}
+
 export interface Answer {
   id: number;
   submission_id: number;
@@ -46,6 +59,108 @@ export interface Submission {
   submitted_at: string;
   answers?: Answer[];
   questions?: Question[];
+}
+
+export interface SubmissionSummary extends Submission {
+  low_conf_count: number;
+  high_conf_count: number;
+  reviewed_count: number;
+  total_answers: number;
+}
+
+export interface BatchGradingResult {
+  ok: boolean;
+  total: number;
+  graded: number;
+  message: string;
+  errors: { id: number; error: string }[];
+}
+
+export interface AnswerOverridePayload {
+  is_correct?: boolean | null;
+  score?: number | null;
+  teacher_comment?: string | null;
+}
+
+export interface CorrectionAnswer {
+  question_id: number;
+  student_answer: string;
+}
+
+export interface OCRQuestion {
+  content: string;
+  type: Question['type'];
+  reference_answer: string;
+  points: number;
+}
+
+export interface OCRQuestionResponse {
+  image_url: string;
+  questions: OCRQuestion[];
+}
+
+export interface ErrorBookEntry {
+  id: number;
+  student_name: string;
+  question_id: number;
+  question_content?: string;
+  question_type?: string;
+  reference_answer?: string;
+  wrong_answer: string;
+  subject: string;
+  added_at: string;
+  reviewed_count: number;
+  status: string;
+}
+
+export interface SimilarQuestion {
+  question_content: string;
+  reference_answer: string;
+  hint: string;
+  knowledge_points: string[];
+}
+
+export interface SimilarQuestionResponse {
+  ok: boolean;
+  similar_question: SimilarQuestion;
+}
+
+export interface ErrorBookSyncResult {
+  ok: boolean;
+  added: number;
+}
+
+export interface ReviewQueueItem {
+  id: number;
+  assignment_id: number;
+  student_name: string;
+  status: string;
+  submitted_at: string;
+  assignment_title: string;
+  low_conf_count: number;
+}
+
+export interface ClassOverview {
+  class_name: string;
+  student_count: number;
+  unique_students: number;
+  avg_score: number;
+  completion_rate: number;
+}
+
+export interface HeatmapItem {
+  knowledge_point_name: string;
+  mastery_pct: number;
+  total_students: number;
+  weak_count: number;
+  strong_count: number;
+}
+
+export interface TrendPoint {
+  period_label: string;
+  avg_score: number;
+  submission_count: number;
+  low_conf_pct: number;
 }
 
 export interface TeacherDashboard {
@@ -86,4 +201,9 @@ export interface StudentDiagnosis {
   wrong_question_count: number;
   root_causes: { knowledge_point_id: number; name: string; affected_count: number }[];
   mastery: Record<string, number>;
+}
+
+export interface KnowledgeGraphResponse {
+  subject: string;
+  roots: KnowledgeGraphRoot[];
 }

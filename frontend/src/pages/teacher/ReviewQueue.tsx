@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
 
 interface ReviewItem {
@@ -54,9 +54,9 @@ export default function ReviewQueuePage() {
       )}
 
       {items.map((item) => (
-        <div
+        <Link
           key={item.id}
-          onClick={() => nav(`/teacher/submissions/${item.id}`)}
+          to={`/teacher/submissions/${item.id}`}
           style={{
             padding: 16,
             borderRadius: 12,
@@ -68,6 +68,8 @@ export default function ReviewQueuePage() {
             justifyContent: 'space-between',
             alignItems: 'center',
             transition: 'box-shadow 0.2s',
+            color: 'inherit',
+            textDecoration: 'none',
           }}
           onMouseEnter={(e) => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.06)')}
           onMouseLeave={(e) => (e.currentTarget.style.boxShadow = 'none')}
@@ -94,7 +96,7 @@ export default function ReviewQueuePage() {
             </span>
             <span style={{ color: '#94a3b8', fontSize: 14 }}>→</span>
           </div>
-        </div>
+        </Link>
       ))}
     </div>
   );

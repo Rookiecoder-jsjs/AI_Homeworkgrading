@@ -2,7 +2,7 @@ import { motion, useMotionValue, useTransform, type Variants } from 'framer-moti
 import type { ReactNode } from 'react';
 
 // ── Shared easings ───────────────────────────────────────
-const smooth = [0.16, 1, 0.3, 1]; // cubic-bezier smooth decel
+const smooth = [0.16, 1, 0.3, 1] as const; // cubic-bezier smooth decel
 const springSnap = { type: 'spring' as const, stiffness: 300, damping: 30 };
 const springSmooth = { type: 'spring' as const, stiffness: 150, damping: 20 };
 

@@ -1,21 +1,21 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
-import type { Assignment, Submission } from '../../types';
+import type { Assignment, SubmissionSummary } from '../../types';
 
 export default function AssignmentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
   const [assignment, setAssignment] = useState<Assignment | null>(null);
-  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [submissions, setSubmissions] = useState<SubmissionSummary[]>([]);
   const [batchGrading, setBatchGrading] = useState(false);
 
-  const load = () => {
+  const load = useCallback(() => {
     if (!id) return;
     api.getAssignment(+id).then(setAssignment).catch(console.error);
     api.listSubmissions(+id).then(setSubmissions).catch(console.error);
-  };
-  useEffect(load, [id]);
+  }, [id]);
+  useEffect(() => { load(); }, [load]);
 
   const pendingCount = submissions.filter((s) => s.status === 'submitted').length;
 
@@ -26,10 +26,13 @@ export default function AssignmentDetailPage() {
       const result = await api.triggerBatchGrading(+id);
       alert(`批改完成：${result.graded}/${result.total} 份`);
       load();
-    } catch (e: any) {
-      alert('批量批改失败：' + e.message);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '请稍后重试';
+      alert('批量批改失败：' + message);
     }
-    setBatchGrading(false);
+    finally {
+      setBatchGrading(false);
+    }
   };
 
   if (!assignment) return <div style={{ padding: 24 }}>加载中...</div>;
@@ -96,9 +99,9 @@ export default function AssignmentDetailPage() {
       </h2>
       {submissions.length === 0 && <p style={{ color: '#94a3b8' }}>暂无提交</p>}
       {submissions.map((s) => (
-        <div
+        <Link
           key={s.id}
-          onClick={() => nav(`/teacher/submissions/${s.id}`)}
+          to={`/teacher/submissions/${s.id}`}
           style={{
             padding: 14,
             borderRadius: 10,
@@ -110,6 +113,8 @@ export default function AssignmentDetailPage() {
             justifyContent: 'space-between',
             alignItems: 'center',
             transition: 'box-shadow 0.2s',
+            color: 'inherit',
+            textDecoration: 'none',
           }}
           onMouseEnter={(e) => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.06)')}
           onMouseLeave={(e) => (e.currentTarget.style.boxShadow = 'none')}
@@ -117,13 +122,13 @@ export default function AssignmentDetailPage() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontWeight: 600, color: '#1e293b' }}>{s.student_name}</span>
-              {(s as any).low_conf_count > 0 && (
+              {s.low_conf_count > 0 && (
                 <span style={{
                   padding: '1px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600,
                   background: '#fef2f2', color: '#b91c1c',
-                }}>⚠️ {(s as any).low_conf_count}</span>
+                }}>⚠️ {s.low_conf_count}</span>
               )}
-              {(s as any).reviewed_count > 0 && (s as any).reviewed_count >= (s as any).total_answers && (
+              {s.reviewed_count > 0 && s.reviewed_count >= s.total_answers && (
                 <span style={{ fontSize: 11, color: '#047857' }}>✓ 全部确认</span>
               )}
             </div>
@@ -153,7 +158,7 @@ export default function AssignmentDetailPage() {
              s.status === 'reviewed' ? '✓ 已复核' :
              s.status === 'corrected' ? '已订正' : s.status}
           </span>
-        </div>
+        </Link>
       ))}
     </div>
   );

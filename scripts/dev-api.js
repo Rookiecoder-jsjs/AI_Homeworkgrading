@@ -5,12 +5,14 @@ import {
   findFreePort,
 } from './lib/ports.js';
 
+const pythonCommand = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+
 async function startApiWithRetry() {
   for (let attempt = 1; attempt <= API_MAX_ATTEMPTS; attempt++) {
     const port = await findFreePort(API_PORT_START, API_PORT_END);
     const portNote = port !== API_PORT_START ? ` (${API_PORT_START} busy)` : '';
     const child = spawn(
-      'python',
+      pythonCommand,
       ['-m', 'uvicorn', 'main:app', '--host', '0.0.0.0', '--port', String(port)],
       { cwd: `${PROJECT_ROOT}/backend`, stdio: 'inherit' },
     );

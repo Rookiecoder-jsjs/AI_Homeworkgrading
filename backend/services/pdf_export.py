@@ -1,11 +1,9 @@
-import io
 import logging
 import os
-from datetime import datetime
-
-from fpdf import FPDF
+from datetime import datetime, timezone
 
 from database import get_db
+from fpdf import FPDF
 
 logger = logging.getLogger("pdf_export")
 
@@ -52,7 +50,7 @@ def _try_register_cjk_font(pdf: FPDF) -> bool:
         _cjk_registered = True
         logger.info("Registered CJK font %s from %s", _CJK_FAMILY, path)
         return True
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - font backends expose varied exception types
         logger.error("Failed to register CJK font %s: %s", path, e)
         return False
 
@@ -89,7 +87,7 @@ def generate_student_report(student_name: str, class_name: str = "", teacher_nam
         _set_font(pdf, "B", 10, cjk=cjk)
         pdf.set_text_color(100, 100, 100)
         pdf.cell(90, 6, "AI Homework Grading - Student Report", align="L")
-        pdf.cell(0, 6, datetime.now().strftime("%Y-%m-%d"), align="R", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 6, datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d"), align="R", new_x="LMARGIN", new_y="NEXT")
         pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
         pdf.ln(4)
 
@@ -112,7 +110,7 @@ def generate_student_report(student_name: str, class_name: str = "", teacher_nam
     info = (
         f"Class: {class_name or 'N/A'}  |  "
         f"Teacher: {teacher_name or 'N/A'}  |  "
-        f"{datetime.now().strftime('%Y-%m-%d')}"
+        f"{datetime.now(timezone.utc).astimezone().strftime('%Y-%m-%d')}"
     )
     pdf.cell(0, 7, _safe(info, use_cjk=cjk), align="C", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(6)
@@ -122,16 +120,22 @@ def generate_student_report(student_name: str, class_name: str = "", teacher_nam
     pdf.cell(0, 10, _safe("1. Score Summary", use_cjk=cjk), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(3)
 
-    subs = conn.execute(
-        """SELECT a_sub.title, a_sub.subject, s.status,
+    query = """SELECT s.id as submission_id, s.assignment_id,
+                         a_sub.title, a_sub.subject, s.status,
                   COALESCE(SUM(ans.score), 0) as total_score
            FROM submissions s
            JOIN assignments a_sub ON s.assignment_id = a_sub.id
            LEFT JOIN answers ans ON ans.submission_id = s.id
-           WHERE s.student_name = ?
-           GROUP BY s.id ORDER BY s.submitted_at DESC""",
-        [student_name],
-    ).fetchall()
+           WHERE s.student_name = ?"""
+    params = [student_name]
+    if class_name:
+        query += " AND a_sub.class_name = ?"
+        params.append(class_name)
+    if teacher_name:
+        query += " AND a_sub.teacher_name = ?"
+        params.append(teacher_name)
+    query += " GROUP BY s.id ORDER BY s.submitted_at DESC"
+    subs = conn.execute(query, params).fetchall()
 
     col_w = [70, 40, 40, 40]
     _set_font(pdf, "B", 10, cjk=cjk)
@@ -164,10 +168,9 @@ def generate_student_report(student_name: str, class_name: str = "", teacher_nam
             """SELECT ans.student_answer, ans.is_correct, ans.score, ans.ai_feedback,
                       q.content, q.points
                FROM answers ans JOIN questions q ON ans.question_id = q.id
-               JOIN submissions s2 ON ans.submission_id = s2.id
-               WHERE s2.student_name = ? AND s2.assignment_id = (SELECT a2.id FROM assignments a2 WHERE a2.title = ? LIMIT 1)
+               WHERE ans.submission_id = ?
                ORDER BY q.sort_order""",
-            [student_name, sub["title"]],
+            [sub["submission_id"]],
         ).fetchall()
 
         for ans in answers:

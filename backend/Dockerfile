@@ -8,9 +8,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps first for layer caching.
-COPY requirements.txt requirements-test.txt ./
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir -r requirements-test.txt
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 # App code.
 COPY . .

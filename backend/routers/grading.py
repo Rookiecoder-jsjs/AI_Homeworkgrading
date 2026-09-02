@@ -1,22 +1,26 @@
 import asyncio
 import base64
-import json
+import logging
+import mimetypes
 import os
-import uuid
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from pathlib import Path
 
 from config import UPLOAD_DIR
 from database import db_session, get_db
+from fastapi import APIRouter, HTTPException, UploadFile
 from models import AnswerUpdate, CorrectRequest
 from prompts.ocr import QUESTION_OCR_PROMPT, REFERENCE_ANSWER_OCR_PROMPT
 from services.ai_client import chat_with_image
 from services.grader import grade_submission
 from services.knowledge_graph import extract_knowledge_points, update_student_mastery
 from services.ocr import ocr_image
-from services.teacher_style import get_teacher_bias, update_teacher_style, apply_correction
+from services.teacher_style import (
+    update_teacher_style,
+)
 from utils import extract_json, save_upload, upload_path
 
 router = APIRouter(prefix="/api", tags=["grading"])
+logger = logging.getLogger("grading")
 
 
 async def _ocr_and_update(submission_id: int, image_url: str, answer_id: int | None = None):
@@ -33,12 +37,11 @@ async def _ocr_and_update(submission_id: int, image_url: str, answer_id: int | N
       order, since `question_id` is autoincrement and not equal to the
       displayed question number.
     """
-    import logging
-    logger = logging.getLogger("grading")
     img_path = upload_path(image_url, UPLOAD_DIR)
     try:
         results = await ocr_image(img_path)
     except Exception:
+        logger.exception("OCR failed for submission %s image %s", submission_id, image_url)
         return
     if not results:
         return
@@ -82,9 +85,10 @@ async def _grade_one_async(conn, submission_id: int) -> bool:
     sub = conn.execute("SELECT * FROM submissions WHERE id = ?", [submission_id]).fetchone()
     if not sub:
         return False
+    initial_status = sub["status"]
 
     cur = conn.execute(
-        "UPDATE submissions SET status = 'grading' WHERE id = ? AND status = 'submitted'",
+        "UPDATE submissions SET status = 'grading' WHERE id = ? AND status IN ('submitted', 'corrected')",
         [submission_id],
     )
     conn.commit()
@@ -125,18 +129,19 @@ async def _grade_one_async(conn, submission_id: int) -> bool:
                 student_answer=ans["student_answer"],
                 max_points=ans["points"],
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("AI grading failed for answer %s", ans["id"])
             return {
                 "is_correct": False, "confidence": 0.0, "score": 0,
-                "feedback": f"[AI 批改暂不可用: {str(e)[:100]}]", "key_points": [],
+                "feedback": "[AI 批改暂不可用，请教师手动评阅]", "key_points": [],
             }
 
     results = await asyncio.gather(*[grade_one(ans) for ans in answers])
     for ans, result in zip(answers, results):
         conn.execute(
-            "UPDATE answers SET is_correct=?, ai_confidence=?, ai_feedback=?, score=? WHERE id=?",
+            "UPDATE answers SET is_correct=?, ai_confidence=?, ai_feedback=?, score=?, ai_score=? WHERE id=?",
             [1 if result.get("is_correct") else 0, result.get("confidence", 0.5),
-             result.get("feedback", ""), result.get("score", 0), ans["id"]],
+             result.get("feedback", ""), result.get("score", 0), result.get("score", 0), ans["id"]],
         )
 
     # Extract knowledge points for each question and update student mastery
@@ -160,14 +165,20 @@ async def _grade_one_async(conn, submission_id: int) -> bool:
                 kp_name = kp.get("name", "").strip()
                 if kp_name and student_name:
                     kp_id_row = conn.execute(
-                        "SELECT id FROM knowledge_points WHERE name = ?", [kp_name]
+                        "SELECT id FROM knowledge_points WHERE name = ? AND subject = ?",
+                        [kp_name, subject],
                     ).fetchone()
                     if kp_id_row:
                         update_student_mastery(student_name, kp_id_row["id"], new_is_correct)
         except Exception:
-            pass  # KP extraction failure should not block grading
+            logger.exception(
+                "Knowledge point extraction failed for submission %s answer %s",
+                submission_id,
+                ans["id"],
+            )
 
-    conn.execute("UPDATE submissions SET status = 'graded' WHERE id = ?", [submission_id])
+    final_status = "corrected" if initial_status == "corrected" else "graded"
+    conn.execute("UPDATE submissions SET status = ? WHERE id = ?", [final_status, submission_id])
     conn.commit()
     return True
 
@@ -177,8 +188,23 @@ async def _grade_one_async(conn, submission_id: int) -> bool:
 @router.post("/submissions/{submission_id}/grade")
 async def trigger_grading(submission_id: int):
     conn = get_db()
-    ok = await _grade_one_async(conn, submission_id)
-    conn.close()
+    current = conn.execute(
+        "SELECT status FROM submissions WHERE id = ?", [submission_id]
+    ).fetchone()
+    previous_status = current["status"] if current else "submitted"
+    try:
+        ok = await _grade_one_async(conn, submission_id)
+    except Exception as exc:
+        logger.exception("Grading failed for submission %s", submission_id)
+        conn.rollback()
+        conn.execute(
+            "UPDATE submissions SET status = ? WHERE id = ? AND status = 'grading'",
+            [previous_status if previous_status in {"submitted", "corrected"} else "submitted", submission_id],
+        )
+        conn.commit()
+        raise HTTPException(502, "批改失败，请稍后重试") from exc
+    finally:
+        conn.close()
     if not ok:
         raise HTTPException(404, "提交不存在或已在批改中")
     return {"ok": True, "message": "批改完成"}
@@ -189,6 +215,12 @@ async def trigger_grading(submission_id: int):
 @router.post("/assignments/{assignment_id}/grade-all")
 async def trigger_batch_grading(assignment_id: int):
     conn = get_db()
+    assignment = conn.execute(
+        "SELECT id FROM assignments WHERE id = ?", [assignment_id]
+    ).fetchone()
+    if not assignment:
+        conn.close()
+        raise HTTPException(404, "作业不存在")
     subs = conn.execute(
         "SELECT id FROM submissions WHERE assignment_id = ? AND status = 'submitted'",
         [assignment_id],
@@ -198,13 +230,23 @@ async def trigger_batch_grading(assignment_id: int):
     total = len(subs)
     errors = []
 
+    semaphore = asyncio.Semaphore(4)
+
     async def grade_sub(sub_id):
         sub_conn = get_db()
         try:
-            ok = await _grade_one_async(sub_conn, sub_id)
+            async with semaphore:
+                ok = await _grade_one_async(sub_conn, sub_id)
             return ok
-        except Exception as e:
-            errors.append({"id": sub_id, "error": str(e)[:100]})
+        except Exception:
+            logger.exception("Batch grading failed for submission %s", sub_id)
+            sub_conn.rollback()
+            sub_conn.execute(
+                "UPDATE submissions SET status = 'submitted' WHERE id = ? AND status = 'grading'",
+                [sub_id],
+            )
+            sub_conn.commit()
+            errors.append({"id": sub_id, "error": "批改失败，请重试"})
             return False
         finally:
             sub_conn.close()
@@ -225,14 +267,39 @@ def override_answer(answer_id: int, data: AnswerUpdate):
         conn.close()
         raise HTTPException(404, "答案不存在")
 
-    # Preserve original AI score before override
-    ai_original_score = ans["score"]
+    q_row = conn.execute(
+        "SELECT q.type, q.points, a_sub.teacher_name "
+        "FROM questions q "
+        "JOIN answers a2 ON q.id = a2.question_id "
+        "JOIN submissions s2 ON a2.submission_id = s2.id "
+        "JOIN assignments a_sub ON s2.assignment_id = a_sub.id "
+        "WHERE a2.id = ?",
+        [answer_id],
+    ).fetchone()
+    if not q_row:
+        conn.close()
+        raise HTTPException(404, "答案对应的题目不存在")
+    if data.score is not None and data.score > q_row["points"]:
+        conn.close()
+        raise HTTPException(422, f"得分不能超过本题满分 {q_row['points']} 分")
+
+    # Preserve the original AI score across repeated teacher edits. Older rows
+    # may not have ai_score populated, so fall back to the current score only
+    # on the first override when the migrated value is still zero.
+    if ans["teacher_override"]:
+        ai_original_score = ans["ai_score"] if ans["ai_score"] is not None else ans["score"]
+    else:
+        ai_original_score = ans["ai_score"] if ans["ai_score"] or ans["score"] == 0 else ans["score"]
     conn.execute("UPDATE answers SET ai_score = ? WHERE id = ?", [ai_original_score, answer_id])
 
     updates = {"teacher_override": 1}
     teacher_score = ai_original_score
     if data.is_correct is not None:
         updates["is_correct"] = 1 if data.is_correct else 0
+        if data.score is None:
+            inferred_score = q_row["points"] if data.is_correct else 0
+            updates["score"] = inferred_score
+            teacher_score = inferred_score
     if data.score is not None:
         updates["score"] = data.score
         teacher_score = data.score
@@ -242,12 +309,6 @@ def override_answer(answer_id: int, data: AnswerUpdate):
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     values = list(updates.values()) + [answer_id]
     conn.execute(f"UPDATE answers SET {set_clause} WHERE id = ?", values)
-
-    # Get question type and teacher name for style tracking
-    q_row = conn.execute(
-        "SELECT q.type, a_sub.teacher_name FROM questions q JOIN answers a2 ON q.id = a2.question_id JOIN submissions s2 ON a2.submission_id = s2.id JOIN assignments a_sub ON s2.assignment_id = a_sub.id WHERE a2.id = ?",
-        [answer_id],
-    ).fetchone()
 
     sub_id = ans["submission_id"]
     unreviewed = conn.execute(
@@ -276,12 +337,24 @@ async def submit_correction(submission_id: int, data: CorrectRequest):
     if not sub:
         conn.close()
         raise HTTPException(404, "提交不存在")
+    if sub["status"] not in {"graded", "reviewed", "corrected"}:
+        conn.close()
+        raise HTTPException(409, "当前提交还不能订正")
 
     conn.execute("UPDATE submissions SET status = 'corrected' WHERE id = ?", [submission_id])
     for item in data.answers:
+        answer_row = conn.execute(
+            "SELECT id FROM answers WHERE submission_id = ? AND question_id = ?",
+            [submission_id, item.question_id],
+        ).fetchone()
+        if not answer_row:
+            conn.close()
+            raise HTTPException(400, "订正答案包含不属于该提交的题目")
         conn.execute(
-            "UPDATE answers SET student_answer = ? WHERE submission_id = ? AND question_id = ?",
-            [item.get("student_answer", ""), submission_id, item.get("question_id")],
+            """UPDATE answers SET student_answer=?, is_correct=NULL, ai_confidence=NULL,
+               ai_feedback='', score=0, teacher_override=0, teacher_comment='', ai_score=0
+               WHERE id=?""",
+            [item.student_answer, answer_row["id"]],
         )
     conn.commit()
     conn.close()
@@ -295,11 +368,12 @@ async def ocr_question(image: UploadFile):
     image_url = await save_upload(image, UPLOAD_DIR)
     filepath = os.path.join(UPLOAD_DIR, os.path.basename(image_url.lstrip("/")))
 
-    with open(filepath, "rb") as f:
-        img_b64 = base64.b64encode(f.read()).decode("utf-8")
+    image_bytes = await asyncio.to_thread(Path(filepath).read_bytes)
+    img_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
     messages = [{"role": "system", "content": QUESTION_OCR_PROMPT}]
-    raw = await chat_with_image(messages, img_b64, temperature=0.1)
+    mime_type = mimetypes.guess_type(filepath)[0] or "image/png"
+    raw = await chat_with_image(messages, img_b64, temperature=0.1, image_mime_type=mime_type)
     data = extract_json(raw)
     if not data:
         data = {"questions": [{"content": raw, "type": "short_answer", "reference_answer": "", "points": 5}]}
@@ -315,11 +389,12 @@ async def ocr_reference_answer(image: UploadFile):
     image_url = await save_upload(image, UPLOAD_DIR)
     filepath = os.path.join(UPLOAD_DIR, os.path.basename(image_url.lstrip("/")))
 
-    with open(filepath, "rb") as f:
-        img_b64 = base64.b64encode(f.read()).decode("utf-8")
+    image_bytes = await asyncio.to_thread(Path(filepath).read_bytes)
+    img_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
     messages = [{"role": "system", "content": REFERENCE_ANSWER_OCR_PROMPT}]
-    raw = await chat_with_image(messages, img_b64, temperature=0.1)
+    mime_type = mimetypes.guess_type(filepath)[0] or "image/png"
+    raw = await chat_with_image(messages, img_b64, temperature=0.1, image_mime_type=mime_type)
     data = extract_json(raw)
     if not data:
         data = {"reference_answer": raw}
@@ -347,7 +422,7 @@ async def ocr_health():
             "status": "ok",
             "ping_reply": reply[:80],
         }
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - health endpoint must report upstream failures
         return {
             "service": "OCR via DashScope chat",
             "base_url": DASHSCOPE_BASE_URL,

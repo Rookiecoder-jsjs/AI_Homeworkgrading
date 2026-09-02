@@ -3,8 +3,9 @@ from collections import deque
 
 from database import get_db
 from prompts.knowledge_graph import KNOWLEDGE_EXTRACTION_PROMPT, build_extraction_prompt
-from services.ai_client import chat
 from utils import extract_json
+
+from services.ai_client import chat
 
 
 async def extract_knowledge_points(question_id: int, question_content: str, subject: str, question_type: str = "short_answer") -> list[dict]:

@@ -1,9 +1,9 @@
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { TiltCard, StaggerContainer, StaggerItem } from '../motion';
 import { theme } from '../theme';
 
-const smooth = [0.16, 1, 0.3, 1];
+const smooth = [0.16, 1, 0.3, 1] as const;
 
 const glassCard = {
   background: 'rgba(255,255,255,0.78)',
@@ -13,9 +13,9 @@ const glassCard = {
   boxShadow: '0 8px 32px rgba(0,0,0,0.05), 0 1px 4px rgba(0,0,0,0.04)',
 };
 
-export default function Home() {
-  const nav = useNavigate();
+const MotionLink = motion(Link);
 
+export default function Home() {
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
@@ -146,8 +146,8 @@ export default function Home() {
           ] as const).map((c) => (
             <StaggerItem key={c.title}>
               <TiltCard style={{ width: 280, height: '100%' }}>
-                <motion.div
-                  onClick={() => nav(c.to)}
+                <MotionLink
+                  to={c.to}
                   whileHover={{ boxShadow: `0 20px 60px ${c.accent}18, 0 2px 8px rgba(0,0,0,0.04)` }}
                   whileTap={{ scale: 0.98 }}
                   transition={{ type: 'spring', stiffness: 300, damping: 25 }}
@@ -155,6 +155,7 @@ export default function Home() {
                     width: 280, minHeight: 210, padding: '30px 28px 26px', borderRadius: 22,
                     ...glassCard, cursor: 'pointer', position: 'relative', overflow: 'hidden',
                     display: 'flex', flexDirection: 'column',
+                    color: 'inherit', textDecoration: 'none',
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = c.accent + '60'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.55)'; }}
@@ -201,7 +202,7 @@ export default function Home() {
                       transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
                     >→</motion.span>
                   </div>
-                </motion.div>
+                </MotionLink>
               </TiltCard>
             </StaggerItem>
           ))}

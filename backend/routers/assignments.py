@@ -1,16 +1,28 @@
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
 import csv
 import io
 
 from database import get_db
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from models import AssignmentCreate, AssignmentDetail, AssignmentOut, QuestionOut
 
 router = APIRouter(prefix="/api/assignments", tags=["assignments"])
 
 
+def _ensure_publishable(data: AssignmentCreate) -> None:
+    """Published assignments must have enough data for deterministic grading."""
+    if data.status != "published":
+        return
+    if not data.questions:
+        raise HTTPException(422, "发布作业至少需要包含一道题目")
+    missing = [str(i + 1) for i, question in enumerate(data.questions) if not question.reference_answer.strip()]
+    if missing:
+        raise HTTPException(422, f"第 {', '.join(missing)} 题缺少参考答案，无法发布")
+
+
 @router.post("", response_model=AssignmentDetail)
 def create_assignment(data: AssignmentCreate):
+    _ensure_publishable(data)
     conn = get_db()
     cur = conn.execute(
         "INSERT INTO assignments (title, subject, description, teacher_name, class_name, due_date, status) "
@@ -93,11 +105,19 @@ def get_assignment(assignment_id: int):
 
 @router.put("/{assignment_id}", response_model=AssignmentDetail)
 def update_assignment(assignment_id: int, data: AssignmentCreate):
+    _ensure_publishable(data)
     conn = get_db()
     row = conn.execute("SELECT * FROM assignments WHERE id = ?", [assignment_id]).fetchone()
     if not row:
         conn.close()
         raise HTTPException(404, "作业不存在")
+
+    submission_count = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM submissions WHERE assignment_id = ?", [assignment_id]
+    ).fetchone()["cnt"]
+    if submission_count:
+        conn.close()
+        raise HTTPException(409, "已有学生提交，不能修改题目；请复制为新作业")
 
     conn.execute(
         "UPDATE assignments SET title=?, subject=?, description=?, teacher_name=?, class_name=?, due_date=?, status=? WHERE id=?",
@@ -125,6 +145,16 @@ def update_assignment(assignment_id: int, data: AssignmentCreate):
 @router.delete("/{assignment_id}")
 def delete_assignment(assignment_id: int):
     conn = get_db()
+    row = conn.execute("SELECT id FROM assignments WHERE id = ?", [assignment_id]).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(404, "作业不存在")
+    submission_count = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM submissions WHERE assignment_id = ?", [assignment_id]
+    ).fetchone()["cnt"]
+    if submission_count:
+        conn.close()
+        raise HTTPException(409, "已有学生提交，不能删除作业")
     conn.execute("DELETE FROM assignments WHERE id = ?", [assignment_id])
     conn.commit()
     conn.close()

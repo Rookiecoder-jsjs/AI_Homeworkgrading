@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
+import type { Question } from '../../types';
 
 interface QuestionDraft {
-  type: string; content: string; reference_answer: string;
+  type: Question['type']; content: string; reference_answer: string;
   rubric: string; points: number; sort_order: number; image_url: string;
 }
 
@@ -37,7 +38,10 @@ export default function AssignmentCreatePage() {
           // Save the uploaded image URL so students see the original image
           if (result.image_url) updateQ(idx, 'image_url', result.image_url);
         }
-      } catch (e: any) { alert('OCR 识别失败：' + e.message); }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : '请稍后重试';
+        alert('OCR 识别失败：' + message);
+      }
       setOcrLoading((p) => ({ ...p, [idx]: false }));
     };
     input.click();
@@ -55,38 +59,50 @@ export default function AssignmentCreatePage() {
         if (result.reference_answer) {
           updateQ(idx, 'reference_answer', result.reference_answer);
         }
-      } catch (e: any) { alert('答案识别失败：' + e.message); }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : '请稍后重试';
+        alert('答案识别失败：' + message);
+      }
       setRefAnswerOcrLoading((p) => ({ ...p, [idx]: false }));
     };
     input.click();
   };
 
   const addQuestion = () => {
-    setQuestions([...questions, {
+    setQuestions((current) => [...current, {
       type: 'choice', content: '', reference_answer: '',
-      rubric: '', points: 5, sort_order: questions.length, image_url: '',
+      rubric: '', points: 5, sort_order: current.length, image_url: '',
     }]);
   };
 
-  const updateQ = (idx: number, field: string, value: any) => {
-    const next = [...questions];
-    (next[idx] as any)[field] = value;
-    setQuestions(next);
+  const updateQ = <K extends keyof QuestionDraft>(idx: number, field: K, value: QuestionDraft[K]) => {
+    setQuestions((current) => current.map((question, i) => (
+      i === idx ? { ...question, [field]: value } : question
+    )));
   };
-  const removeQ = (idx: number) => setQuestions(questions.filter((_, i) => i !== idx));
+  const removeQ = (idx: number) => setQuestions((current) => current.filter((_, i) => i !== idx));
 
   const handleSubmit = async () => {
     if (!title.trim()) return alert('请输入作业标题');
+    if (questions.length === 0) return alert('请至少添加一道题目');
+    const invalidQuestion = questions.findIndex((q) => !q.content.trim() || !q.reference_answer.trim());
+    if (invalidQuestion >= 0) {
+      return alert(`请补充第 ${invalidQuestion + 1} 题的题目内容和参考答案`);
+    }
     setSaving(true);
     try {
       await api.createAssignment({
-        title, subject, class_name: className, teacher_name: teacherName,
+        title, subject, class_name: className, teacher_name: teacherName, due_date: '',
         description, questions: questions.map((q, i) => ({ ...q, sort_order: i })),
         status: 'published',
       });
       nav('/teacher/assignments');
-    } catch (e: any) { alert('创建失败：' + e.message); }
-    setSaving(false);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '请稍后重试';
+      alert('创建失败：' + message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -123,15 +139,16 @@ export default function AssignmentCreatePage() {
               width: 22, height: 22, borderRadius: 6, background: '#eef2ff',
               color: '#4338ca', fontSize: 11, fontWeight: 700, flexShrink: 0,
             }}>{idx + 1}</span>
-            <select value={q.type} onChange={(e) => updateQ(idx, 'type', e.target.value)} style={{ ...inputStyle, width: 130, fontSize: 13 }}>
+            <select aria-label={`第 ${idx + 1} 题题型`} value={q.type} onChange={(e) => updateQ(idx, 'type', e.target.value as Question['type'])} style={{ ...inputStyle, width: 130, fontSize: 13 }}>
               <option value="choice">选择题</option>
               <option value="true_false">判断题</option>
               <option value="fill_blank">填空题</option>
               <option value="short_answer">简答题</option>
               <option value="essay">作文/证明题</option>
             </select>
-            <input type="number" placeholder="分值" value={q.points} onChange={(e) => updateQ(idx, 'points', +e.target.value)} style={{ ...inputStyle, width: 70, fontSize: 13 }} />
+            <input aria-label={`第 ${idx + 1} 题分值`} type="number" min={0} max={1000} placeholder="分值" value={q.points} onChange={(e) => updateQ(idx, 'points', +e.target.value)} style={{ ...inputStyle, width: 70, fontSize: 13 }} />
             <button
+              type="button"
               onClick={() => handleQuestionOCR(idx)}
               disabled={ocrLoading[idx]}
               title="拍照识别题目"
@@ -144,14 +161,15 @@ export default function AssignmentCreatePage() {
             >
               {ocrLoading[idx] ? '识别中...' : '📷 拍题识别'}
             </button>
-            <button onClick={() => removeQ(idx)} style={{
+            <button type="button" onClick={() => removeQ(idx)} aria-label={`删除第 ${idx + 1} 题`} style={{
               padding: '4px 12px', borderRadius: 6, border: '1px solid #fecaca',
               background: '#fef2f2', color: '#b91c1c', cursor: 'pointer', fontSize: 11, fontWeight: 600,
             }}>删除</button>
           </div>
-          <input placeholder="题目内容" value={q.content} onChange={(e) => updateQ(idx, 'content', e.target.value)} style={{ ...inputStyle, width: '100%', marginBottom: 8, fontSize: 13 }} />
+          <input aria-label={`第 ${idx + 1} 题内容`} placeholder="题目内容" value={q.content} onChange={(e) => updateQ(idx, 'content', e.target.value)} style={{ ...inputStyle, width: '100%', marginBottom: 8, fontSize: 13 }} />
           <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
             <input
+              aria-label={`第 ${idx + 1} 题参考答案`}
               placeholder="参考答案（必填，用于AI批改锚定）"
               value={q.reference_answer}
               onChange={(e) => updateQ(idx, 'reference_answer', e.target.value)}
@@ -162,6 +180,7 @@ export default function AssignmentCreatePage() {
               }}
             />
             <button
+              type="button"
               onClick={() => handleRefAnswerOCR(idx)}
               disabled={refAnswerOcrLoading[idx]}
               title="拍照上传参考答案图片，自动识别文字"
@@ -177,7 +196,7 @@ export default function AssignmentCreatePage() {
             </button>
           </div>
           {['short_answer', 'essay'].includes(q.type) && (
-            <input placeholder="评分标准（可选）" value={q.rubric} onChange={(e) => updateQ(idx, 'rubric', e.target.value)} style={{ ...inputStyle, width: '100%', fontSize: 13 }} />
+            <input aria-label={`第 ${idx + 1} 题评分标准`} placeholder="评分标准（可选）" value={q.rubric} onChange={(e) => updateQ(idx, 'rubric', e.target.value)} style={{ ...inputStyle, width: '100%', fontSize: 13 }} />
           )}
         </div>
       ))}

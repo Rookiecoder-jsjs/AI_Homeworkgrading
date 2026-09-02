@@ -8,13 +8,14 @@ import {
 } from './lib/ports.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const pythonCommand = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 
 export async function startApi({ cwd, env } = {}) {
   for (let attempt = 1; attempt <= API_MAX_ATTEMPTS; attempt++) {
     const port = await findFreePort(API_PORT_START, API_PORT_END);
     const portNote = port !== API_PORT_START ? ` (${API_PORT_START} busy)` : '';
     const child = spawn(
-      'python',
+      pythonCommand,
       ['-m', 'uvicorn', 'main:app', '--host', '0.0.0.0', '--port', String(port)],
       { cwd: cwd ?? resolve(PROJECT_ROOT, 'backend'), stdio: 'inherit', env },
     );

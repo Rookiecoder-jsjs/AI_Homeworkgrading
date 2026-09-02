@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../../api/client';
@@ -7,23 +7,24 @@ import MasteryBar from '../../components/MasteryBar';
 import { theme } from '../../theme';
 import type { StudentDashboard } from '../../types';
 
-const smooth = [0.16, 1, 0.3, 1];
+const smooth = [0.16, 1, 0.3, 1] as const;
 
 function CountUp({ target, duration = 700 }: { target: number | string; duration?: number }) {
   const [val, setVal] = useState(0);
   const frameRef = useRef<number>(0);
+  const numericTarget = typeof target === 'number' ? target : null;
   useEffect(() => {
-    if (typeof target === 'string') { setVal(0); return; }
+    if (numericTarget === null) return;
     const start = performance.now();
     const animate = (now: number) => {
       const p = Math.min((now - start) / duration, 1);
       const eased = 1 - Math.pow(1 - p, 3);
-      setVal(Math.round(eased * target));
+      setVal(Math.round(eased * numericTarget));
       if (p < 1) frameRef.current = requestAnimationFrame(animate);
     };
     frameRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frameRef.current);
-  }, [target, duration]);
+  }, [numericTarget, duration]);
   if (typeof target === 'string') return <>{target}</>;
   return <>{val}</>;
 }
@@ -34,15 +35,17 @@ export default function StudentDashboardPage() {
   const [data, setData] = useState<StudentDashboard | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  const load = (n: string) => {
-    if (!n) return;
-    localStorage.setItem('student_name', n);
-    api.getStudentDashboard(n).then(d => { setData(d); setLoaded(true); }).catch(console.error);
-  };
+  const load = useCallback((n: string) => {
+    const normalizedName = n.trim();
+    if (!normalizedName) return;
+    localStorage.setItem('student_name', normalizedName);
+    api.getStudentDashboard(normalizedName).then(d => { setData(d); setLoaded(true); }).catch(console.error);
+  }, []);
 
   useEffect(() => {
-    if (name) load(name);
-  }, []);
+    const savedName = localStorage.getItem('student_name')?.trim();
+    if (savedName) load(savedName);
+  }, [load]);
 
   return (
     <div style={{
@@ -82,6 +85,9 @@ export default function StudentDashboardPage() {
         }}
       >
         <input
+          id="student-name"
+          aria-label="学生姓名"
+          autoComplete="name"
           placeholder="输入你的姓名"
           value={name}
           onChange={e => setName(e.target.value)}

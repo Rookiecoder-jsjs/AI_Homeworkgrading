@@ -1,3 +1,5 @@
+import sqlite3
+
 from database import get_db
 
 
@@ -31,8 +33,8 @@ def add_to_error_book(student_name: str, answer_id: int) -> dict | None:
              row["knowledge_points_json"] or "[]", row["subject"] or "", row["class_name"] or ""],
         )
         conn.commit()
-    except Exception:  # UNIQUE violation or other
-        pass
+    except sqlite3.IntegrityError:  # Duplicate answer is expected and harmless.
+        conn.rollback()
 
     entry = conn.execute("SELECT * FROM error_book WHERE answer_id = ?", [answer_id]).fetchone()
     result = dict(entry) if entry else None

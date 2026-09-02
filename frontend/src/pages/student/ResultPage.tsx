@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../../api/client';
@@ -8,15 +8,27 @@ import type { Submission } from '../../types';
 import GradingResult from '../../components/GradingResult';
 import CleanContent from '../../components/CleanContent';
 
-const smooth = [0.16, 1, 0.3, 1];
+const smooth = [0.16, 1, 0.3, 1] as const;
 
 export default function ResultPage() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
   const [sub, setSub] = useState<Submission | null>(null);
+  const submissionStatus = sub?.status;
+  const isPending = Boolean(sub && !['reviewed', 'corrected'].includes(submissionStatus ?? ''));
 
-  const load = () => { if (id) api.getSubmission(+id).then(setSub).catch(console.error); };
-  useEffect(load, [id]);
+  const load = useCallback(() => {
+    if (id) api.getSubmission(+id).then(setSub).catch(console.error);
+  }, [id]);
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!id || !isPending) return;
+    const interval = setInterval(() => {
+      load();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [id, isPending, load]);
 
   if (!sub) return <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>加载中...</div>;
 
@@ -84,7 +96,7 @@ export default function ResultPage() {
             style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', padding: '24px 28px', marginBottom: 28, display: 'flex', alignItems: 'center', gap: 28, flexWrap: 'wrap' }}
           >
             <motion.div
-              initial={{ '--pct': 0 } as any}
+              initial={{ '--pct': 0 } as Record<string, number>}
               animate={{ '--pct': correctCount / Math.max(totalCount, 1) }}
               transition={{ duration: 1, ease: smooth }}
               style={{
@@ -142,7 +154,7 @@ export default function ResultPage() {
                       </div>
                     )}
                     {q && <CleanContent content={q.content} style={{ fontSize: 15, color: '#334155', lineHeight: 1.7, margin: '0 0 12px' }} />}
-                    <GradingResult answer={ans} questionType={q?.type} readOnly />
+                    <GradingResult answer={ans} readOnly />
                   </div>
                 </motion.div>
               </StaggerItem>
@@ -169,4 +181,3 @@ export default function ResultPage() {
     </div>
   );
 }
-

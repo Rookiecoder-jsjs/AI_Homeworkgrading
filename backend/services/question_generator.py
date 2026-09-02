@@ -1,9 +1,8 @@
-import json
 
-from database import get_db
 from prompts.question_gen import VARIANT_GEN_PROMPT, build_variant_prompt
-from services.ai_client import chat
 from utils import extract_json
+
+from services.ai_client import chat
 
 
 async def generate_similar_question(

@@ -1,6 +1,5 @@
-from fastapi import APIRouter, Query
-
 from database import db_session
+from fastapi import APIRouter
 from models import StudentDashboard, TeacherDashboard, TeacherStyleReport
 from services.knowledge_graph import compute_root_causes, get_student_mastery_map
 from services.teacher_style import get_teacher_style_report
@@ -17,7 +16,7 @@ def teacher_dashboard():
                (SELECT COUNT(*) FROM submissions) as total_submissions,
                (SELECT COUNT(*) FROM submissions WHERE status IN ('graded','reviewed','corrected')) as graded,
                (SELECT COUNT(*) FROM answers WHERE ai_confidence < 0.7 AND teacher_override = 0) as pending,
-               (SELECT COALESCE(AVG(score), 0) FROM answers WHERE score > 0) as avg_score"""
+               (SELECT COALESCE(AVG(score), 0) FROM answers WHERE is_correct IS NOT NULL) as avg_score"""
         ).fetchone()
     return TeacherDashboard(
         total_assignments=row["total_assignments"],
@@ -35,20 +34,24 @@ def student_dashboard(name: str = ""):
 
         if name:
             completed = conn.execute(
-                "SELECT COUNT(DISTINCT assignment_id) as cnt FROM submissions WHERE student_name = ?",
+                """SELECT COUNT(DISTINCT assignment_id) as cnt
+                   FROM submissions
+                   WHERE student_name = ? AND status IN ('graded','reviewed','corrected')""",
                 [name],
             ).fetchone()["cnt"]
             avg = conn.execute(
                 """SELECT COALESCE(AVG(a.score), 0) as avg FROM answers a
                    JOIN submissions s ON a.submission_id = s.id
-                   WHERE s.student_name = ? AND a.score > 0""",
+                   WHERE s.student_name = ? AND a.is_correct IS NOT NULL""",
                 [name],
             ).fetchone()["avg"]
         else:
             completed = conn.execute(
                 "SELECT COUNT(DISTINCT assignment_id) as cnt FROM submissions"
             ).fetchone()["cnt"]
-            avg = conn.execute("SELECT COALESCE(AVG(score), 0) as avg FROM answers WHERE score > 0").fetchone()["avg"]
+            avg = conn.execute(
+                "SELECT COALESCE(AVG(score), 0) as avg FROM answers WHERE is_correct IS NOT NULL"
+            ).fetchone()["avg"]
 
     # Knowledge-graph-based weak point analysis
     mastery_map = get_student_mastery_map(name) if name else {}
@@ -113,7 +116,12 @@ def student_diagnosis(name: str):
 
 # ── Class Analytics ───────────────────────────────────────
 
-from services.class_analytics import compare_classes, get_class_stats, get_knowledge_heatmap, get_trends
+from services.class_analytics import (
+    compare_classes,
+    get_class_stats,
+    get_knowledge_heatmap,
+    get_trends,
+)
 
 
 @router.get("/class-overview")

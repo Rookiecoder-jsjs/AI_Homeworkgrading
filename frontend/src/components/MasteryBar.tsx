@@ -6,7 +6,6 @@ interface Props {
 export default function MasteryBar({ score, label }: Props) {
   const pct = Math.round(score * 100);
   const color = score < 0.4 ? '#ef4444' : score < 0.7 ? '#f59e0b' : '#10b981';
-  const bg = score < 0.4 ? '#fef2f2' : score < 0.7 ? '#fffbeb' : '#ecfdf5';
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

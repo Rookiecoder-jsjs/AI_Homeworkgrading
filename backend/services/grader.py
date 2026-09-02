@@ -1,8 +1,9 @@
 import logging
 
-from services.ai_client import chat
 from prompts.grading import GRADING_SYSTEM_PROMPT, build_grading_prompt
 from utils import extract_json
+
+from services.ai_client import chat
 
 logger = logging.getLogger("grader")
 
@@ -58,14 +59,31 @@ async def grade_submission(
     data = extract_json(result)
     if data:
         feedback = data.get("feedback", "")
+        if not isinstance(feedback, str):
+            feedback = str(feedback)
         if max_points <= 0:
             feedback = f"[未计分] {feedback}"
+        try:
+            raw_score = int(float(data.get("score", 0)))
+        except (TypeError, ValueError):
+            raw_score = 0
+        score = max(0, min(raw_score, max_points)) if max_points > 0 else 0
+        try:
+            confidence = float(data.get("confidence", 0.5))
+        except (TypeError, ValueError):
+            confidence = 0.0
+        confidence = max(0.0, min(confidence, 1.0))
+        raw_correct = data.get("is_correct", False)
+        if isinstance(raw_correct, bool):
+            is_correct = raw_correct
+        else:
+            is_correct = str(raw_correct).strip().lower() in {"true", "1", "yes", "是"}
         return {
-            "is_correct": data.get("is_correct", False),
-            "confidence": data.get("confidence", 0.5),
-            "score": min(data.get("score", 0), max_points) if max_points > 0 else 0,
+            "is_correct": is_correct,
+            "confidence": confidence,
+            "score": score,
             "feedback": feedback,
-            "key_points": data.get("key_points", []),
+            "key_points": data.get("key_points", []) if isinstance(data.get("key_points", []), list) else [],
         }
 
     # AI returned non-JSON — log the raw output and return a graceful fallback

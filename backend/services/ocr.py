@@ -1,20 +1,25 @@
+import asyncio
 import base64
+import mimetypes
+from pathlib import Path
 
-from services.ai_client import chat_with_image
 from prompts.ocr import OCR_SYSTEM_PROMPT
 from utils import extract_json
+
+from services.ai_client import chat_with_image
 
 
 async def ocr_image(image_path: str) -> dict[int, str]:
     """Run OCR on an image and return a mapping of question_number -> student_answer."""
-    with open(image_path, "rb") as f:
-        image_b64 = base64.b64encode(f.read()).decode("utf-8")
+    image_bytes = await asyncio.to_thread(Path(image_path).read_bytes)
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
     messages = [
         {"role": "system", "content": OCR_SYSTEM_PROMPT},
         {"role": "user", "content": "请识别图片中的题目和学生答案。"},
     ]
-    result = await chat_with_image(messages, image_b64)
+    mime_type = mimetypes.guess_type(image_path)[0] or "image/png"
+    result = await chat_with_image(messages, image_b64, image_mime_type=mime_type)
 
     data = extract_json(result)
     if data:

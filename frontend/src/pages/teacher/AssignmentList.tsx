@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
 import type { Assignment } from '../../types';
 
@@ -13,8 +13,15 @@ export default function AssignmentListPage() {
   useEffect(load, []);
 
   const handleDelete = async (id: number) => {
-    await api.deleteAssignment(id);
-    load();
+    const assignment = list.find((item) => item.id === id);
+    if (!window.confirm(`确定删除作业“${assignment?.title ?? ''}”吗？`)) return;
+    try {
+      await api.deleteAssignment(id);
+      load();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '请稍后重试';
+      alert(`删除失败：${message}`);
+    }
   };
 
   return (
@@ -42,14 +49,12 @@ export default function AssignmentListPage() {
       {list.map((a) => (
         <div
           key={a.id}
-          onClick={() => nav(`/teacher/assignments/${a.id}`)}
           style={{
             padding: 16,
             borderRadius: 12,
             marginBottom: 12,
             background: '#fff',
             border: '1px solid #e2e8f0',
-            cursor: 'pointer',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -58,13 +63,16 @@ export default function AssignmentListPage() {
           onMouseEnter={(e) => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)')}
           onMouseLeave={(e) => (e.currentTarget.style.boxShadow = 'none')}
         >
-          <div>
+          <Link
+            to={`/teacher/assignments/${a.id}`}
+            style={{ flex: 1, minWidth: 0, display: 'block', color: 'inherit', textDecoration: 'none' }}
+          >
             <div style={{ fontSize: 16, fontWeight: 600, color: '#1e293b' }}>{a.title}</div>
             <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>
               {a.subject} · {a.class_name} · {a.teacher_name}
             </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          </Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 12 }}>
             <span style={{
               padding: '2px 10px',
               borderRadius: 10,
@@ -76,7 +84,9 @@ export default function AssignmentListPage() {
               {a.status === 'published' ? '已发布' : a.status === 'draft' ? '草稿' : '已关闭'}
             </span>
             <button
+              type="button"
               onClick={(e) => { e.stopPropagation(); handleDelete(a.id); }}
+              aria-label={`删除作业：${a.title}`}
               style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', cursor: 'pointer', fontSize: 12 }}
             >
               删除

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
 import type { Assignment, Submission } from '../../types';
 
@@ -12,9 +12,7 @@ export default function StudentAssignmentListPage() {
   useEffect(() => {
     const load = () => {
       api.listAssignments('published').then(setAssignments).catch(console.error);
-      api.listSubmissions().then((all) => {
-        setMySubs(all.filter((s: any) => s.student_name === name));
-      }).catch(console.error);
+      api.listSubmissions(undefined, name).then(setMySubs).catch(console.error);
     };
     load();
     // Auto-refresh every 15s so students see status changes without manual reload
@@ -44,9 +42,9 @@ export default function StudentAssignmentListPage() {
       {assignments.map((a) => {
         const s = getStatus(a.id);
         return (
-          <div
+          <Link
             key={a.id}
-            onClick={() => s.submitted ? nav(`/student/submissions/${s.id}`) : nav(`/student/assignments/${a.id}`)}
+            to={s.submitted ? `/student/submissions/${s.id}` : `/student/assignments/${a.id}`}
             style={{
               padding: 16,
               borderRadius: 12,
@@ -57,6 +55,8 @@ export default function StudentAssignmentListPage() {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
+              color: 'inherit',
+              textDecoration: 'none',
             }}
           >
             <div>
@@ -88,7 +88,7 @@ export default function StudentAssignmentListPage() {
                 : s.status === 'corrected' ? '已订正'
                 : '等待批改'}
             </span>
-          </div>
+          </Link>
         );
       })}
     </div>

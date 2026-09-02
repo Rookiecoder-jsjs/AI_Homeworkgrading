@@ -28,7 +28,10 @@ function TreeNode({ node, mastery, depth }: { node: KPNode; mastery?: Record<str
 
   return (
     <div style={{ marginLeft: depth * 20 }}>
-      <div
+      <button
+        type="button"
+        disabled={!hasChildren}
+        aria-expanded={hasChildren ? expanded : undefined}
         onClick={() => hasChildren && setExpanded(!expanded)}
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
@@ -36,6 +39,7 @@ function TreeNode({ node, mastery, depth }: { node: KPNode; mastery?: Record<str
           background: bgColor, border: `1px solid ${borderColor}`,
           cursor: hasChildren ? 'pointer' : 'default',
           transition: 'all 0.15s', fontSize: 13,
+          width: '100%', textAlign: 'left', font: 'inherit', color: 'inherit',
         }}
       >
         {hasChildren && (
@@ -56,7 +60,7 @@ function TreeNode({ node, mastery, depth }: { node: KPNode; mastery?: Record<str
         {node.description && (
           <span style={{ fontSize: 11, color: '#94a3b8' }}>{node.description}</span>
         )}
-      </div>
+      </button>
       {expanded && hasChildren && (
         <div style={{ borderLeft: '2px solid #e2e8f0', marginLeft: 8 }}>
           {node.children.map((child) => (
